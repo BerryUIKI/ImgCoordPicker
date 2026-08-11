@@ -126,6 +126,7 @@
   }
   .item input[type=text]:focus{border-color:var(--accent)}
   .item .meta{font-size:11px; color:var(--muted); margin-top:4px; font-family:Consolas,monospace}
+  .item.sel{border-color:var(--accent); box-shadow:0 0 0 1px var(--accent)}
   .right .actions{padding:10px 12px; border-top:1px solid var(--border); display:flex; gap:8px; flex-wrap:wrap}
   textarea{
     width:100%; background:var(--bg); color:var(--text); border:1px solid var(--border);
@@ -189,7 +190,14 @@
         <div id="stage">
           <div id="stageInner">
             <canvas id="imgCanvas"></canvas>
-            <svg id="overlay"></svg>
+            <svg id="overlay">
+  <defs>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+</svg>
           </div>
         </div>
         <div class="magnifier" id="magnifier">
@@ -257,6 +265,7 @@
   let thumbsCollapsed=false;
   let history=[];                      // undo stack [{annotations,nextId}]
   let redoStack=[];                    // redo stack
+  let selectedAnnotationId=null;       // currently selected annotation id
   const HISTORY_LIMIT=50;
   const DRAG_THRESHOLD=5;              // px movement to trigger box mode
   const CLICK_MAX_MS=250;              // max mousedown-to-mouseup time for a click
@@ -512,25 +521,27 @@
   }
 
   function render(){
-    // clear overlay (SVG size/viewBox handled in layout())
     overlay.innerHTML='';
     for(const a of annotations){
+      const isSel=a.id===selectedAnnotationId;
       if(a.type==='point'){
         const circ=document.createElementNS(NS,'circle');
         circ.setAttribute('cx',a.x); circ.setAttribute('cy',a.y);
-        circ.setAttribute('r',4.5); circ.setAttribute('fill','#ff4d6d'); circ.setAttribute('stroke','#fff');
-        circ.setAttribute('stroke-width',1.5);
+        const r=isSel?7:4.5;
+        circ.setAttribute('r',r); circ.setAttribute('fill','#ff4d6d'); circ.setAttribute('stroke','#fff');
+        circ.setAttribute('stroke-width',isSel?3:1.5);
+        if(isSel) circ.setAttribute('filter','url(#glow)');
         overlay.appendChild(circ);
-        // label below-right of the point (index only, no prompt text)
         drawLabel(a.x+8, a.y+16, '#'+a.id, 'rgba(255,77,109,.92)', 'start');
       } else {
         const rect=document.createElementNS(NS,'rect');
         rect.setAttribute('x',a.x); rect.setAttribute('y',a.y);
         rect.setAttribute('width',a.w); rect.setAttribute('height',a.h);
         rect.setAttribute('fill','rgba(110,231,160,.15)');
-        rect.setAttribute('stroke','#6ee7a0'); rect.setAttribute('stroke-width','1.5');
+        const sw=isSel?3:1.5;
+        rect.setAttribute('stroke','#6ee7a0'); rect.setAttribute('stroke-width',sw);
+        if(isSel) rect.setAttribute('filter','url(#glow)');
         overlay.appendChild(rect);
-        // label at top-left of the box (index only, no prompt text)
         drawLabel(a.x, Math.max(20,a.y-8), '#'+a.id, 'rgba(110,231,160,.92)', 'start');
       }
     }
@@ -572,6 +583,7 @@
   function pointAt(e){
     const pt=eventToCanvas(e);
     const a=addAnnotation({type:'point', x:pt.x, y:pt.y, w:0, h:0, text:''});
+    selectedAnnotationId=a.id;
     focusInput(a.id);
   }
   function finishBox(){
@@ -583,6 +595,7 @@
     if(draftRect){ overlay.removeChild(draftRect); draftRect=null; }
     if(draftLabel){ overlay.removeChild(draftLabel); draftLabel=null; }
     const a=addAnnotation({type:'box', x, y, w, h, text:''});
+    selectedAnnotationId=a.id;
     dragState=null;
     focusInput(a.id);
   }
@@ -593,6 +606,24 @@
   }
 
   // ---------- mouse events (auto: click → point, long-press+drag → box) ----------
+  // click on SVG to select existing annotation
+  overlay.addEventListener('click', e=>{
+    if(!img) return;
+    const pt=eventToCanvas(e);
+    // find annotation near click
+    for(const a of annotations){
+      if(a.type==='point'){
+        const d=Math.hypot(pt.x-a.x, pt.y-a.y);
+        if(d<8/scale){ selectAnnotation(a.id); return; }
+      } else {
+        if(pt.x>=a.x && pt.x<=a.x+a.w && pt.y>=a.y && pt.y<=a.y+a.h){
+          selectAnnotation(a.id); return;
+        }
+      }
+    }
+    // click on empty area → deselect
+    clearSelection();
+  });
   stageInner.addEventListener('mousemove', e=>{
     moveMagnifier(e);
     if(dragState && dragState.active){
@@ -706,7 +737,8 @@
     const t=i18n[currentLang];
     annotations.forEach((a,i)=>{
       const div=document.createElement('div');
-      div.className='item';
+      div.className='item'+(a.id===selectedAnnotationId?' sel':'');
+      div.onclick=()=>{ selectAnnotation(a.id); };
       // line
       const line=document.createElement('div'); line.className='line';
       const badge=document.createElement('span');
@@ -749,11 +781,54 @@
 
   function removeAnnotation(id){
     pushHistory();
+    if(selectedAnnotationId===id) selectedAnnotationId=null;
     annotations=annotations.filter(a=>a.id!==id);
     render(); renderList();
   }
+
+  // ---------- selection ----------
+  function selectAnnotation(id){
+    selectedAnnotationId=(selectedAnnotationId===id)?null:id;
+    render(); renderList();
+  }
+  function getSelectedAnnotation(){
+    return annotations.find(a=>a.id===selectedAnnotationId)||null;
+  }
+  function clearSelection(){
+    if(!selectedAnnotationId) return;
+    selectedAnnotationId=null;
+    render(); renderList();
+  }
+  function deleteSelected(){
+    if(selectedAnnotationId===null) return;
+    // if input is focused, don't delete
+    const tag=document.activeElement&&document.activeElement.tagName;
+    if(tag==='INPUT'||tag==='TEXTAREA') return;
+    removeAnnotation(selectedAnnotationId);
+  }
+  function copySelected(){
+    const a=getSelectedAnnotation();
+    if(!a){ toastMsg(i18n[currentLang].noSelection); return; }
+    const W=img.naturalWidth, H=img.naturalHeight;
+    let txt;
+    if(a.type==='point'){
+      txt=`${Math.round(a.x)}px, ${Math.round(a.y)}px (${fmt(a.x/W*100)}%, ${fmt(a.y/H*100)}%)`;
+    } else {
+      txt=`${Math.round(a.x)}px,${Math.round(a.y)}px → ${Math.round(a.x+a.w)}px,${Math.round(a.y+a.h)}px`;
+    }
+    navigator.clipboard.writeText(txt).then(()=>toastMsg(i18n[currentLang].copySelectedOK)).catch(()=>{});
+  }
+  function cancelDragOrSelection(){
+    if(dragState){
+      if(draftRect){ overlay.removeChild(draftRect); draftRect=null; }
+      if(draftLabel){ overlay.removeChild(draftLabel); draftLabel=null; }
+      dragState=null;
+    }
+    clearSelection();
+  }
   function clearAll(){
     pushHistory();
+    selectedAnnotationId=null;
     annotations=[]; nextId=1;
     render(); renderList();
   }
@@ -830,9 +905,10 @@
     };
   });
 
-  // keyboard delete
+  // keyboard shortcuts
   document.addEventListener('keydown', e=>{
     const tag=document.activeElement&&document.activeElement.tagName;
+    const typing=(tag==='INPUT'||tag==='TEXTAREA');
     if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==='z'){
       e.preventDefault();
       if(e.shiftKey) redo(); else undo();
@@ -841,8 +917,14 @@
     if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==='y'){
       e.preventDefault(); redo(); return;
     }
-    if(e.key==='Delete' && tag==='INPUT'){
-      // let user edit text; ignore
+    if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==='c' && !typing && selectedAnnotationId!==null){
+      e.preventDefault(); copySelected(); return;
+    }
+    if((e.key==='Delete'||e.key==='Backspace') && !typing){
+      e.preventDefault(); deleteSelected(); return;
+    }
+    if(e.key==='Escape'){
+      cancelDragOrSelection();
     }
   });
 
@@ -896,7 +978,9 @@
       noUndo:'没有可撤销的操作',
       noRedo:'没有可重做的操作',
       undoToast:'↩ 已撤销',
-      redoToast:'↪ 已重做'
+      redoToast:'↪ 已重做',
+      noSelection:'请先选中一个标注',
+      copySelectedOK:'已复制选中坐标 ✅'
     },
     en:{
       title:'🖱️ Image Coord Picker',
@@ -939,7 +1023,9 @@
       noUndo:'Nothing to undo',
       noRedo:'Nothing to redo',
       undoToast:'↩ Undo',
-      redoToast:'↪ Redo'
+      redoToast:'↪ Redo',
+      noSelection:'Select an annotation first',
+      copySelectedOK:'Copied selected coords ✅'
     }
   };
   let currentLang='zh';
