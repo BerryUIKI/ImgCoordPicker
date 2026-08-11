@@ -145,19 +145,17 @@
         </div>
       </div>
       <div id="toolbar">
-        <div class="tool active" data-tool="point" id="toolPoint">
-          <span class="dot"></span> 点选
-        </div>
-        <div class="tool" data-tool="box" id="toolBox">
-          <span class="dot"></span> 框选
+        <div class="tool active" id="toolAuto">
+          <span class="dot"></span> 自动模式
         </div>
         <div class="seg" style="margin-left:8px" id="modeSeg">
           <button data-mode="pct" class="on">百分比</button>
           <button data-mode="both">像素+百分比</button>
         </div>
-        <span class="hint" id="toolHint">点击图片拾取坐标点</span>
+        <span class="hint" id="toolHint">单击＝点选 · 长按拖动＝框选</span>
         <div class="spacer"></div>
-        <span class="hint">缩放：Ctrl+滚轮</span>
+        <button id="fitBtn" title="尺寸自适应">⤢ 适应</button>
+        <span class="hint" style="margin-left:4px">缩放：Ctrl+滚轮</span>
       </div>
     </div>
 
@@ -185,22 +183,24 @@
   const fileInput=$('fileInput'), uploadBtn=$('uploadBtn'), resetBtn=$('resetBtn');
   const imgCanvas=$('imgCanvas'), overlay=$('overlay'), stage=$('stage'), stageWrap=$('stageWrap'), stageInner=$('stageInner');
   const magnifier=$('magnifier'), magCanvas=$('magCanvas'), magLabel=$('magLabel');
-  const toolPoint=$('toolPoint'), toolBox=$('toolBox'), modeSeg=$('modeSeg');
+  const toolAuto=$('toolAuto'), modeSeg=$('modeSeg');
   const listEl=$('list'), output=$('output'), countEl=$('count');
-  const toolHint=$('toolHint'), toast=$('toast');
+  const toolHint=$('toolHint'), toast=$('toast'), fitBtn=$('fitBtn');
 
   // ---------- state ----------
   let img=null;                        // HTMLImageElement
   let scale=1;
-  let tool='point';                    // point | box
   let mode='pct';                      // pct | both
   const NS='http://www.w3.org/2000/svg';
   let annotations=[];                  // {id,type,x,y,w,h,text}
   let nextId=1;
-  let dragging=null;                   // {startX,startY,nx,ny,evt}
+  let dragState=null;                  // {startX,startY,startTime,active,dx,dy} — active=true means box drag in progress
   let draftRect=null;                  // svg rect for box draft
+  let draftLabel=null;                 // svg text for box size label during drag
   let hoverPx=null;                    // {x,y} canvas px for magnifier
   let lastLayout=null;
+  const DRAG_THRESHOLD=5;              // px movement to trigger box mode
+  const CLICK_MAX_MS=250;              // max mousedown-to-mouseup time for a click
 
   // ---------- image loading ----------
   function loadFile(file){
@@ -213,8 +213,7 @@
       imgCanvas.height=im.naturalHeight;
       const ctx=imgCanvas.getContext('2d');
       ctx.drawImage(im,0,0);
-      scale=1;
-      layout();
+      fitToView();
       toastMsg('图片加载成功：'+ im.naturalWidth +' × '+ im.naturalHeight);
     };
     im.src=url;
@@ -237,13 +236,22 @@
     }
   });
 
-  // ---------- layout / zoom ----------
+  // ---------- layout / zoom / fit ----------
+  function fitToView(){
+    if(!img) return;
+    const wrap=stageWrap.getBoundingClientRect();
+    const pad=20;
+    const sw=wrap.width-pad*2, sh=wrap.height-pad*2;
+    if(sw<=0||sh<=0){ scale=1; layout(); return; }
+    scale=Math.min(sw/img.naturalWidth, sh/img.naturalHeight, 1);
+    layout();
+    stageWrap.scrollLeft=0; stageWrap.scrollTop=0;
+  }
   function layout(){
     if(!img) return;
     const w=img.naturalWidth*scale, h=img.naturalHeight*scale;
     stageInner.style.width=w+'px';
     stageInner.style.height=h+'px';
-    if(lastLayout && lastLayout.w===w && lastLayout.h===h) {} 
     lastLayout={w,h};
     render();
   }
@@ -350,9 +358,9 @@
       half*2, half*2, 0,0,120,120);
     magLabel.textContent=`${hoverPx.x}, ${hoverPx.y}`;
   }
-  function hideMagnifier(){ if(dragging) return; magnifier.style.display='none'; }
+  function hideMagnifier(){ if(dragState && dragState.active) return; magnifier.style.display='none'; }
 
-  // ---------- add / annotate ----------
+  // ---------- add / annotate (auto mode: click = point, long-press+drag = box) ----------
   function addAnnotation(data){
     const id=nextId++;
     const a=Object.assign({id}, data);
@@ -366,14 +374,15 @@
     focusInput(a.id);
   }
   function finishBox(){
-    if(!dragging) return;
-    // normalize
-    let{startX,startY,nx,ny}=dragging;
-    const x=Math.min(startX,nx), y=Math.min(startY,ny);
-    const w=Math.abs(nx-startX), h=Math.abs(ny-startY);
-    overlay.removeChild(draftRect); draftRect=null;
+    if(!dragState) return;
+    let{startX,startY,dx,dy}=dragState;
+    const x=Math.min(startX,dx), y=Math.min(startY,dy);
+    const w=Math.abs(dx-startX), h=Math.abs(dy-startY);
+    // remove draft elements
+    if(draftRect){ overlay.removeChild(draftRect); draftRect=null; }
+    if(draftLabel){ overlay.removeChild(draftLabel); draftLabel=null; }
     const a=addAnnotation({type:'box', x, y, w, h, text:''});
-    dragging=null;
+    dragState=null;
     focusInput(a.id);
   }
 
@@ -382,12 +391,12 @@
     if(el){ el.focus(); el.select(); }
   }
 
-  // ---------- mouse events ----------
+  // ---------- mouse events (auto: click → point, long-press+drag → box) ----------
   stageInner.addEventListener('mousemove', e=>{
     moveMagnifier(e);
-    if(dragging && tool==='box'){
+    if(dragState && dragState.active){
       const pt=eventToCanvas(e);
-      dragging.nx=pt.x; dragging.ny=pt.y;
+      dragState.dx=pt.x; dragState.dy=pt.y;
       updateDraft();
     }
   });
@@ -395,30 +404,67 @@
     if(!img) return;
     e.preventDefault();
     const pt=eventToCanvas(e);
-    if(tool==='point'){
-      pointAt(e);
-    } else {
-      dragging={startX:pt.x, startY:pt.y, nx:pt.x, ny:pt.y};
-      const rect=document.createElementNS(NS,'rect');
-      rect.setAttribute('fill','rgba(110,231,160,.15)');
-      rect.setAttribute('stroke','#6ee7a0'); rect.setAttribute('stroke-width','1.5');
-      rect.setAttribute('stroke-dasharray','4 3');
-      overlay.appendChild(rect);
-      draftRect=rect;
-      updateDraft();
+    dragState={startX:pt.x, startY:pt.y, dx:pt.x, dy:pt.y, startTime:Date.now(), active:false};
+  });
+  window.addEventListener('mousemove', e=>{
+    // check if we need to promote to box drag
+    if(dragState && !dragState.active && img){
+      const pt=eventToCanvas(e);
+      const dx=Math.abs(pt.x-dragState.startX), dy=Math.abs(pt.y-dragState.startY);
+      const elapsed=Date.now()-dragState.startTime;
+      if(dx>DRAG_THRESHOLD || dy>DRAG_THRESHOLD){
+        dragState.active=true;
+        dragState.dx=pt.x; dragState.dy=pt.y;
+        magnifier.style.display='none';
+        // create draft rect
+        const rect=document.createElementNS(NS,'rect');
+        rect.setAttribute('fill','rgba(110,231,160,.15)');
+        rect.setAttribute('stroke','#6ee7a0'); rect.setAttribute('stroke-width','1.5');
+        rect.setAttribute('stroke-dasharray','4 3');
+        overlay.appendChild(rect);
+        draftRect=rect;
+        // create draft label
+        const lbl=document.createElementNS(NS,'text');
+        lbl.setAttribute('fill','#fff'); lbl.setAttribute('font-size','12');
+        lbl.setAttribute('stroke','#000'); lbl.setAttribute('stroke-width','1');
+        lbl.setAttribute('paint-order','stroke');
+        overlay.appendChild(lbl);
+        draftLabel=lbl;
+        updateDraft();
+      }
     }
   });
   window.addEventListener('mouseup', e=>{
-    if(dragging && tool==='box') finishBox();
+    if(!dragState) return;
+    if(dragState.active){
+      // box drag completed
+      finishBox();
+    } else {
+      // short click → point
+      const elapsed=Date.now()-dragState.startTime;
+      if(elapsed<CLICK_MAX_MS){
+        pointAt(e);
+      }
+      dragState=null;
+    }
   });
   stageInner.addEventListener('mouseleave', hideMagnifier);
 
   function updateDraft(){
-    if(!draftRect||!dragging) return;
-    let x=Math.min(dragging.startX,dragging.nx), y=Math.min(dragging.startY,dragging.ny);
-    let w=Math.abs(dragging.nx-dragging.startX), h=Math.abs(dragging.ny-dragging.startY);
+    if(!draftRect||!dragState) return;
+    let x=Math.min(dragState.startX,dragState.dx), y=Math.min(dragState.startY,dragState.dy);
+    let w=Math.abs(dragState.dx-dragState.startX), h=Math.abs(dragState.dy-dragState.startY);
     draftRect.setAttribute('x',x); draftRect.setAttribute('y',y);
     draftRect.setAttribute('width',w); draftRect.setAttribute('height',h);
+    if(draftLabel){
+      const labelText=`${Math.round(w)} × ${Math.round(h)}`;
+      draftLabel.textContent=labelText;
+      // position label at top-right of selection
+      const lx=x+w, ly=y;
+      draftLabel.setAttribute('x',lx-4);
+      draftLabel.setAttribute('y',Math.max(14,ly-4));
+      draftLabel.setAttribute('text-anchor','end');
+    }
   }
 
   // drag to move image when zoomed? skip for simplicity
@@ -471,7 +517,7 @@
     if(a.type==='point'){
       return `x=${fmt(a.x/img.naturalWidth*100)}%, y=${fmt(a.y/img.naturalHeight*100)}%`;
     } else {
-      return `(${fmt(a.x/img.naturalWidth*100)}%, ${fmt(a.y/img.naturalHeight*100)}%) → (${fmt((a.x+a.w)/img.naturalWidth*100)}%, ${fmt((a.y+a.h)/img.naturalHeight*100)}%)`;
+      return `(${fmt(a.x/img.naturalWidth*100)}%, ${fmt(a.y/img.naturalHeight*100)}%) → (${fmt((a.x+a.w)/img.naturalWidth*100)}%, ${fmt((a.y+a.h)/img.naturalHeight*100)}%)  [${Math.round(a.w)}×${Math.round(a.h)}px]`;
     }
   }
   function metaText(a){
@@ -533,23 +579,19 @@
   // ---------- manual add ----------
   $('addManualBtn').onclick=()=>{
     if(!img){ toastMsg('请先上传图片'); return; }
-    const type=tool;
-    const a=addAnnotation({type, x:img.naturalWidth/2, y:img.naturalHeight/2, w:type==='box'?80:0, h:type==='box'?60:0, text:''});
+    const type='point';
+    const a=addAnnotation({type, x:img.naturalWidth/2, y:img.naturalHeight/2, w:0, h:0, text:''});
     focusInput(a.id);
-    toastMsg(type==='box'?'已添加默认框选，可点击输入文字':'已添加默认点选，可点击输入文字');
+    toastMsg('已添加默认点选，可点击输入文字');
   };
   $('clearBtn').onclick=()=>{ clearAll(); toastMsg('已清空全部标注'); };
   resetBtn.onclick=()=>{ clearAll(); };
 
   // ---------- tools / mode ----------
-  function setTool(t){
-    tool=t;
-    toolPoint.classList.toggle('active',t==='point');
-    toolBox.classList.toggle('active',t==='box');
-    toolHint.textContent = t==='point' ? '点击图片拾取坐标点' : '按住鼠标拖动框选区域';
-  }
-  toolPoint.onclick=()=>{ setTool('point'); dragging=null; if(draftRect){overlay.removeChild(draftRect);draftRect=null;} };
-  toolBox.onclick=()=>{ setTool('box'); };
+  // Auto mode: single click → point, long-press + drag → box
+  toolAuto.classList.add('active');
+  toolHint.textContent='单击＝点选 · 长按拖动＝框选';
+  fitBtn.onclick=()=>{ fitToView(); toastMsg('已适应窗口'); };
   modeSeg.querySelectorAll('button').forEach(b=>{
     b.onclick=()=>{
       modeSeg.querySelectorAll('button').forEach(x=>x.classList.remove('on'));
@@ -576,7 +618,6 @@
 
   // init
   renderList();
-  setTool('point');
   toastMsg('👆 点击「上传图片」开始');
 })();
 </script>
