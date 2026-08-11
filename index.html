@@ -127,6 +127,8 @@
   .item input[type=text]:focus{border-color:var(--accent)}
   .item .meta{font-size:11px; color:var(--muted); margin-top:4px; font-family:Consolas,monospace}
   .item.sel{border-color:var(--accent); box-shadow:0 0 0 1px var(--accent)}
+  .group-head{display:flex; align-items:center; gap:8px; padding:6px 4px; font-size:12px; font-weight:600; color:var(--muted); margin-top:6px}
+  .group-head .gcount{background:var(--panel2); border:1px solid var(--border); color:var(--muted); border-radius:20px; padding:0 7px; font-size:11px}
   .right .actions{padding:10px 12px; border-top:1px solid var(--border); display:flex; gap:8px; flex-wrap:wrap}
   textarea{
     width:100%; background:var(--bg); color:var(--text); border:1px solid var(--border);
@@ -232,6 +234,13 @@
 
     <div class="right">
       <h2><span data-i18n="listTitle">标注列表</span> <span class="count" id="count">0</span></h2>
+      <div style="padding:6px 12px; border-bottom:1px solid var(--border); display:flex; gap:6px; align-items:center">
+        <span style="font-size:11px; color:var(--muted)" data-i18n="groupLabel">分组：</span>
+        <div class="seg" id="groupSeg">
+          <button data-group="type" class="on" data-i18n="groupType">按类型</button>
+          <button data-group="text" data-i18n="groupText">按文字</button>
+        </div>
+      </div>
       <div id="list"></div>
       <div class="actions">
         <button id="addManualBtn" data-i18n="addManual">➕ 手动添加</button>
@@ -279,6 +288,7 @@
   let selectedAnnotationId=null;       // currently selected annotation id
   let showGrid=false;                  // grid helper lines toggle
   let snappingActive=false;            // shift key snapping state
+  let groupingMode='type';             // 'type' | 'text'
   const HISTORY_LIMIT=50;
   const DRAG_THRESHOLD=5;              // px movement to trigger box mode
   const CLICK_MAX_MS=250;              // max mousedown-to-mouseup time for a click
@@ -823,6 +833,40 @@
   }
 
   // ---------- list rendering ----------
+  function buildItem(a, i, t){
+    const div=document.createElement('div');
+    div.className='item'+(a.id===selectedAnnotationId?' sel':'');
+    div.onclick=()=>{ selectAnnotation(a.id); };
+    // line
+    const line=document.createElement('div'); line.className='line';
+    const badge=document.createElement('span');
+    badge.className='badge '+(a.type==='point'?'point':'box');
+    badge.textContent=(a.type==='point'?t.pointBadge:t.boxBadge)+' '+(i+1);
+    const coords=document.createElement('span'); coords.className='coords';
+    coords.textContent=coordText(a);
+    const del=document.createElement('button'); del.className='del'; del.textContent='✕';
+    del.title='删除';
+    del.onclick=()=>{removeAnnotation(a.id)};
+    line.append(badge, coords, del);
+    // text input
+    const input=document.createElement('input');
+    input.type='text'; input.dataset.id=a.id;
+    input.placeholder=t.inputPlaceholder;
+    input.value=a.text||'';
+    input.oninput=()=>{a.text=input.value; render(); updateOutput();};
+    const meta=document.createElement('div'); meta.className='meta';
+    meta.textContent=metaText(a);
+    div.append(line,input,meta);
+    return div;
+  }
+  function groupHeader(title, count){
+    const h=document.createElement('div');
+    h.className='group-head';
+    const s=document.createElement('span'); s.className='gtitle'; s.textContent=title;
+    const c=document.createElement('span'); c.className='gcount'; c.textContent=count;
+    h.append(s,c);
+    return h;
+  }
   function renderList(){
     listEl.innerHTML='';
     countEl.textContent=annotations.length;
@@ -832,32 +876,27 @@
       return;
     }
     const t=i18n[currentLang];
-    annotations.forEach((a,i)=>{
-      const div=document.createElement('div');
-      div.className='item'+(a.id===selectedAnnotationId?' sel':'');
-      div.onclick=()=>{ selectAnnotation(a.id); };
-      // line
-      const line=document.createElement('div'); line.className='line';
-      const badge=document.createElement('span');
-      badge.className='badge '+(a.type==='point'?'point':'box');
-      badge.textContent=(a.type==='point'?t.pointBadge:t.boxBadge)+' '+(i+1);
-      const coords=document.createElement('span'); coords.className='coords';
-      coords.textContent=coordText(a);
-      const del=document.createElement('button'); del.className='del'; del.textContent='✕';
-      del.title='删除';
-      del.onclick=()=>{removeAnnotation(a.id)};
-      line.append(badge, coords, del);
-      // text input
-      const input=document.createElement('input');
-      input.type='text'; input.dataset.id=a.id;
-      input.placeholder=t.inputPlaceholder;
-      input.value=a.text||'';
-      input.oninput=()=>{a.text=input.value; render(); updateOutput();};
-      const meta=document.createElement('div'); meta.className='meta';
-      meta.textContent=metaText(a);
-      div.append(line,input,meta);
-      listEl.appendChild(div);
-    });
+    if(groupingMode==='type'){
+      // group by type: point / box
+      [['point',t.pointBadge],['box',t.boxBadge]].forEach(([type,title])=>{
+        const items=annotations.map((a,i)=>[a,i]).filter(([a])=>a.type===type);
+        if(!items.length) return;
+        listEl.appendChild(groupHeader(title, items.length));
+        items.forEach(([a,i])=>listEl.appendChild(buildItem(a,i,t)));
+      });
+    } else {
+      // group by text
+      const tgroup=new Map();
+      annotations.forEach((a,i)=>{
+        const key=(a.text&&a.text.trim())?a.text.trim():t.noLabel;
+        if(!tgroup.has(key)) tgroup.set(key,[]);
+        tgroup.get(key).push([a,i]);
+      });
+      tgroup.forEach((items,title)=>{
+        listEl.appendChild(groupHeader(title, items.length));
+        items.forEach(([a,i])=>listEl.appendChild(buildItem(a,i,t)));
+      });
+    }
     updateOutput();
   }
 
@@ -998,6 +1037,15 @@
     $('gridToggle').classList.toggle('active', showGrid);
     render();
   };
+  // grouping toggle
+  $('groupSeg').querySelectorAll('button').forEach(b=>{
+    b.onclick=()=>{
+      $('groupSeg').querySelectorAll('button').forEach(x=>x.classList.remove('on'));
+      b.classList.add('on');
+      groupingMode=b.dataset.group;
+      renderList();
+    };
+  });
   // shift key snapping
   document.addEventListener('keydown', e=>{
     if(e.key==='Shift'){ snappingActive=true; }
@@ -1091,7 +1139,11 @@
       redoToast:'↪ 已重做',
       noSelection:'请先选中一个标注',
       copySelectedOK:'已复制选中坐标 ✅',
-      grid:'⧉ 网格'
+      grid:'⧉ 网格',
+      groupLabel:'分组：',
+      groupType:'按类型',
+      groupText:'按文字',
+      noLabel:'未标注'
     },
     en:{
       title:'🖱️ Image Coord Picker',
@@ -1137,7 +1189,11 @@
       redoToast:'↪ Redo',
       noSelection:'Select an annotation first',
       copySelectedOK:'✅ Copied selected coords',
-      grid:'⧉ Grid'
+      grid:'⧉ Grid',
+      groupLabel:'Group:',
+      groupType:'By Type',
+      groupText:'By Text',
+      noLabel:'No Label'
     }
   };
   let currentLang='zh';
