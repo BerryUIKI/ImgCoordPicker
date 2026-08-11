@@ -145,6 +145,12 @@
     opacity:0; transition:opacity .2s; pointer-events:none;
   }
   .toast.show{opacity:1}
+  .edit-input{
+    position:absolute; z-index:30; background:var(--panel); border:1px solid var(--accent);
+    color:var(--text); border-radius:6px; padding:4px 8px; font-size:13px; outline:none;
+    min-width:80px; max-width:200px; display:none;
+  }
+  .edit-input:focus{border-color:var(--accent2)}
   ::-webkit-scrollbar{width:10px; height:10px}
   ::-webkit-scrollbar-thumb{background:#333; border-radius:5px}
   ::-webkit-scrollbar-track{background:transparent}
@@ -204,6 +210,7 @@
           <canvas id="magCanvas" width="120" height="120"></canvas>
           <div class="mag-label" id="magLabel"></div>
         </div>
+        <input type="text" id="editInput" class="edit-input" data-i18n-placeholder="inputPlaceholder" placeholder="输入提示词 / 文字…">
       </div>
       <div id="toolbar">
         <div class="tool active" id="toolAuto">
@@ -247,6 +254,7 @@
   const toolAuto=$('toolAuto'), modeSeg=$('modeSeg');
   const listEl=$('list'), output=$('output'), countEl=$('count');
   const toolHint=$('toolHint'), toast=$('toast'), fitBtn=$('fitBtn');
+  const editInput=$('editInput');
 
   // ---------- state ----------
   let images=[];                       // [{id,name,img,annotations,nextId,thumbnail,scale,lastLayout}]
@@ -605,9 +613,62 @@
     if(el){ el.focus(); el.select(); }
   }
 
-  // ---------- mouse events (auto: click → point, long-press+drag → box) ----------
-  // click on SVG to select existing annotation
+  // ---------- inline edit annotation text on canvas ----------
+  let editAnnotationId=null;
+  function showEditInput(a, e){
+    if(editAnnotationId!==null) hideEditInput();
+    editAnnotationId=a.id;
+    editInput.value=a.text||'';
+    const pt=canvasToStage(a.type==='point'?a.x:a.x+a.w/2, a.type==='point'?a.y:a.y-8);
+    const r=stageWrap.getBoundingClientRect();
+    editInput.style.display='block';
+    editInput.style.left=(pt.sx-r.left)+'px';
+    editInput.style.top=(pt.sy-r.top)+'px';
+    editInput.focus();
+    editInput.select();
+  }
+  function hideEditInput(){
+    if(editAnnotationId===null) return;
+    const a=annotations.find(x=>x.id===editAnnotationId);
+    if(a){ a.text=editInput.value; render(); renderList(); updateOutput(); }
+    editAnnotationId=null;
+    editInput.style.display='none';
+    editInput.value='';
+  }
+  editInput.onblur=()=>{ hideEditInput(); };
+  editInput.onkeydown=e=>{
+    if(e.key==='Enter'){ hideEditInput(); }
+    if(e.key==='Escape'){ hideEditInput(); }
+    e.stopPropagation();
+  };
+  // double-click on overlay to edit annotation
+  overlay.addEventListener('dblclick', e=>{
+    if(!img) return;
+    const pt=eventToCanvas(e);
+    for(const a of annotations){
+      if(a.type==='point'){
+        const d=Math.hypot(pt.x-a.x, pt.y-a.y);
+        if(d<8/scale){ showEditInput(a, e); return; }
+      } else {
+        if(pt.x>=a.x && pt.x<=a.x+a.w && pt.y>=a.y && pt.y<=a.y+a.h){
+          showEditInput(a, e); return;
+        }
+      }
+    }
+  });
+  // hide edit input on canvas click
   overlay.addEventListener('click', e=>{
+    if(editAnnotationId!==null){
+      // check if we clicked on the edit annotation itself
+      const pt=eventToCanvas(e);
+      const a=annotations.find(x=>x.id===editAnnotationId);
+      if(a){
+        let hit=false;
+        if(a.type==='point'){ hit=Math.hypot(pt.x-a.x, pt.y-a.y)<8/scale; }
+        else { hit=pt.x>=a.x&&pt.x<=a.x+a.w&&pt.y>=a.y&&pt.y<=a.y+a.h; }
+        if(!hit) hideEditInput();
+      }
+    }
     if(!img) return;
     const pt=eventToCanvas(e);
     // find annotation near click
