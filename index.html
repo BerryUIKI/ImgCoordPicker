@@ -222,6 +222,9 @@
         </div>
         <span class="hint" id="toolHint" data-i18n="hintTool">单击＝点选 · 长按拖动＝框选</span>
         <div class="spacer"></div>
+        <div class="tool" id="gridToggle" title="网格辅助线">
+          <span class="dot"></span> <span data-i18n="grid">⧉ 网格</span>
+        </div>
         <button id="fitBtn" data-i18n="fitBtn" title="尺寸自适应">⤢ 适应</button>
         <span class="hint" style="margin-left:4px" data-i18n="zoomHint">缩放：Ctrl+滚轮</span>
       </div>
@@ -274,6 +277,8 @@
   let history=[];                      // undo stack [{annotations,nextId}]
   let redoStack=[];                    // redo stack
   let selectedAnnotationId=null;       // currently selected annotation id
+  let showGrid=false;                  // grid helper lines toggle
+  let snappingActive=false;            // shift key snapping state
   const HISTORY_LIMIT=50;
   const DRAG_THRESHOLD=5;              // px movement to trigger box mode
   const CLICK_MAX_MS=250;              // max mousedown-to-mouseup time for a click
@@ -530,6 +535,24 @@
 
   function render(){
     overlay.innerHTML='';
+    // draw grid if enabled
+    if(showGrid && img){
+      const W=img.naturalWidth, H=img.naturalHeight;
+      const steps=10;
+      for(let i=1;i<steps;i++){
+        const x=W*i/steps, y=H*i/steps;
+        const l1=document.createElementNS(NS,'line');
+        l1.setAttribute('x1',x); l1.setAttribute('y1',0);
+        l1.setAttribute('x2',x); l1.setAttribute('y2',H);
+        l1.setAttribute('stroke','rgba(255,255,255,.12)'); l1.setAttribute('stroke-width','1');
+        overlay.appendChild(l1);
+        const l2=document.createElementNS(NS,'line');
+        l2.setAttribute('x1',0); l2.setAttribute('y1',y);
+        l2.setAttribute('x2',W); l2.setAttribute('y2',y);
+        l2.setAttribute('stroke','rgba(255,255,255,.12)'); l2.setAttribute('stroke-width','1');
+        overlay.appendChild(l2);
+      }
+    }
     for(const a of annotations){
       const isSel=a.id===selectedAnnotationId;
       if(a.type==='point'){
@@ -745,8 +768,21 @@
 
   function updateDraft(){
     if(!draftRect||!dragState) return;
-    let x=Math.min(dragState.startX,dragState.dx), y=Math.min(dragState.startY,dragState.dy);
-    let w=Math.abs(dragState.dx-dragState.startX), h=Math.abs(dragState.dy-dragState.startY);
+    let dx=dragState.dx, dy=dragState.dy;
+    // Shift snapping: lock square / horizontal / vertical proportion
+    if(snappingActive){
+      const ax=Math.abs(dx-dragState.startX), ay=Math.abs(dy-dragState.startY);
+      if(ax>0 && ay>0){
+        if(ay<ax*0.3){ dy=dragState.startY; }        // horizontal line
+        else if(ax<ay*0.3){ dx=dragState.startX; }   // vertical line
+        else { const s=Math.max(ax,ay);               // square
+          dx=dragState.startX + (dx>=dragState.startX?s:-s);
+          dy=dragState.startY + (dy>=dragState.startY?s:-s);
+        }
+      }
+    }
+    let x=Math.min(dragState.startX,dx), y=Math.min(dragState.startY,dy);
+    let w=Math.abs(dx-dragState.startX), h=Math.abs(dy-dragState.startY);
     draftRect.setAttribute('x',x); draftRect.setAttribute('y',y);
     draftRect.setAttribute('width',w); draftRect.setAttribute('height',h);
     if(draftLabel){
@@ -956,6 +992,19 @@
     $('thumbsPanel').classList.toggle('collapsed', thumbsCollapsed);
     $('thumbsToggle').textContent=thumbsCollapsed?'▶':'◀';
   };
+  // grid toggle
+  $('gridToggle').onclick=()=>{
+    showGrid=!showGrid;
+    $('gridToggle').classList.toggle('active', showGrid);
+    render();
+  };
+  // shift key snapping
+  document.addEventListener('keydown', e=>{
+    if(e.key==='Shift'){ snappingActive=true; }
+  });
+  document.addEventListener('keyup', e=>{
+    if(e.key==='Shift'){ snappingActive=false; }
+  });
   modeSeg.querySelectorAll('button').forEach(b=>{
     b.onclick=()=>{
       modeSeg.querySelectorAll('button').forEach(x=>x.classList.remove('on'));
@@ -1041,7 +1090,8 @@
       undoToast:'↩ 已撤销',
       redoToast:'↪ 已重做',
       noSelection:'请先选中一个标注',
-      copySelectedOK:'已复制选中坐标 ✅'
+      copySelectedOK:'已复制选中坐标 ✅',
+      grid:'⧉ 网格'
     },
     en:{
       title:'🖱️ Image Coord Picker',
@@ -1086,7 +1136,8 @@
       undoToast:'↩ Undo',
       redoToast:'↪ Redo',
       noSelection:'Select an annotation first',
-      copySelectedOK:'Copied selected coords ✅'
+      copySelectedOK:'✅ Copied selected coords',
+      grid:'⧉ Grid'
     }
   };
   let currentLang='zh';
