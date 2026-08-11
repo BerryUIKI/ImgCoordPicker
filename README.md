@@ -2,9 +2,23 @@
 
 > 🖱️ 图片坐标拾取工具 —— 为提示词 / AI 工作流而生
 
+<p>
+  <a href="https://github.com/BerryUIKI/ImgCoordPicker/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
+  <a href="https://github.com/BerryUIKI/ImgCoordPicker"><img src="https://img.shields.io/badge/Platform-Web-darkgreen.svg" alt="Platform: Web"></a>
+  <a href="https://github.com/BerryUIKI/ImgCoordPicker"><img src="https://img.shields.io/badge/Dependencies-Zero-brightgreen.svg" alt="Zero Dependencies"></a>
+  <a href="https://berryuiki.github.io/ImgCoordPicker/"><img src="https://img.shields.io/badge/Live-Demo-orange.svg" alt="Live Demo"></a>
+  <a href="https://github.com/BerryUIKI"><img src="https://img.shields.io/badge/Author-BerryUIKI-4f8cff.svg" alt="Author: BerryUIKI"></a>
+</p>
+
 一个轻量、零依赖的网页工具，用于从图片上拾取坐标点或框选区域，并输出**像素坐标**与**百分比坐标**，方便直接粘贴到 ComfyUI / Stable Diffusion 等提示词工具中使用。
 
 单文件 HTML，浏览器直接打开即可运行，无需安装、无需构建、无需后端。
+
+---
+
+## 🚀 在线预览
+
+👉 **[点此在线体验](https://berryuiki.github.io/ImgCoordPicker/)**（GitHub Pages 部署）
 
 ---
 
@@ -15,13 +29,13 @@
 - **🔍 像素级放大镜**：悬停即放大 10×，精准定位
 - **📝 文字标注**：每个点/框都能输入提示词或说明文字
 - **📋 一键复制**：所有标注结果统一格式，直接粘贴使用
-- **📐 尺寸自适应**：上传图片自动适应窗口，支持 Ctrl+滚轮缩放
+- **📐 尺寸自适应**：上传图片自动适应窗口并居中，支持 Ctrl+滚轮缩放
 - **🎯 框选尺寸显示**：拖拽时实时显示选区 `宽 × 高`
 - **📁 拖拽上传**：直接把图片拖进窗口即可加载
 
 ---
 
-## 🚀 快速开始
+## 🛠️ 快速开始
 
 ### 方式一：直接打开（推荐）
 
@@ -91,14 +105,17 @@ python -m http.server 8080
 ```
 ImgCoordPicker/
 ├── index.html      # 主程序（单文件）
-└── README.md       # 项目说明
+├── README.md       # 项目说明
+└── LICENSE         # MIT 许可证
 ```
 
 ---
 
-## 🤝 参与贡献
+## 🤝 贡献与支持
 
-欢迎提交 Issue 或 PR！如果你有任何改进建议，比如：
+欢迎提交 [Issue](https://github.com/BerryUIKI/ImgCoordPicker/issues) 或 [Pull Request](https://github.com/BerryUIKI/ImgCoordPicker/pulls)！
+
+如果你有任何改进建议，比如：
 
 - 更多输出格式（JSON / SVG / 坐标映射）
 - 标注的撤销 / 重做
@@ -109,12 +126,23 @@ ImgCoordPicker/
 
 ---
 
-## 📄 许可证
+## 👤 作者
 
-[MIT](LICENSE)
+**BerryUIKI**
+
+- 🌐 GitHub: [@BerryUIKI](https://github.com/BerryUIKI)
+- 📦 这个项目: [ImgCoordPicker](https://github.com/BerryUIKI/ImgCoordPicker)
+
+如果你的项目也用到了这个工具，欢迎在下方留言反馈，或直接联系我。
 
 ---
 
-## 🌟 Star 一下
+## ⭐ Star 一下
 
-如果你觉得这个工具对你有帮助，欢迎给个 ⭐ 支持！
+如果这个工具对你有帮助，欢迎点个 **⭐ Star** 支持！你的支持是我持续更新的动力 💪
+
+---
+
+## 📄 许可证
+
+[MIT](LICENSE) © [BerryUIKI](https://github.com/BerryUIKI)
