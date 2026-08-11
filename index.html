@@ -37,6 +37,7 @@
   #stageWrap{
     flex:1; position:relative; overflow:auto; background:
       repeating-conic-gradient(#14161a 0% 25%, #101216 0% 50%) 0 0/24px 24px;
+    display:flex; align-items:center; justify-content:center;
   }
   #stageWrap.drag-over::after{
     content:'📁 拖放图片到此处'; position:absolute; inset:0;
@@ -45,7 +46,7 @@
     font-size:24px; font-weight:600; color:#fff; z-index:50;
     border:3px dashed var(--accent); pointer-events:none;
   }
-  #stage{position:relative; display:inline-block; margin:auto}
+  #stage{position:relative; display:inline-block}
   #stageInner{position:relative}
   #imgCanvas{display:block; max-width:none}
   #overlay{position:absolute; inset:0; pointer-events:none}
