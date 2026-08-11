@@ -243,9 +243,22 @@
       </div>
       <div id="list"></div>
       <div class="actions">
+        <button id="exportBtn" title="导出标注 JSON">⬇️ <span data-i18n="export">导出</span></button>
+        <button id="importBtn" title="导入标注 JSON">⬆️ <span data-i18n="import">导入</span></button>
         <button id="addManualBtn" data-i18n="addManual">➕ 手动添加</button>
         <button id="copyBtn" data-i18n="copy">📋 复制结果</button>
         <button id="clearBtn" class="danger" data-i18n="clear">🧹 清空</button>
+      </div>
+      <input type="file" id="importInput" accept=".json,application/json" hidden>
+      <div style="padding:8px 12px 0; border-top:1px solid var(--border); display:flex; align-items:center; gap:8px">
+        <span style="font-size:11px; color:var(--muted); flex-shrink:0" data-i18n="formatLabel">格式：</span>
+        <select id="formatSel" style="flex:1; background:var(--panel2); color:var(--text); border:1px solid var(--border); border-radius:6px; padding:4px 6px; font-size:12px; outline:none">
+          <option value="text" data-i18n="fmtText">📄 文本</option>
+          <option value="json" data-i18n="fmtJson">🧩 JSON</option>
+          <option value="svg" data-i18n="fmtSvg">🖼️ SVG</option>
+          <option value="comfy" data-i18n="fmtComfy">🤖 ComfyUI/SD</option>
+          <option value="coco" data-i18n="fmtCoco">🎯 COCO</option>
+        </select>
       </div>
       <div style="max-height:120px; overflow:hidden; border-top:1px solid var(--border)">
         <textarea id="output" data-i18n-placeholder="outputPlaceholder" placeholder="输出结果将显示在这里…" readonly></textarea>
@@ -969,12 +982,22 @@
     render(); renderList();
   }
 
-  // ---------- output ----------
+  // ---------- output (multi-format) ----------
+  let outputFormat='text';
   function updateOutput(){
     if(!img){ output.value=''; return; }
     const W=img.naturalWidth, H=img.naturalHeight;
-    const lines=[];
     const t=i18n[currentLang];
+    switch(outputFormat){
+      case 'json': output.value=jsonOutput(W,H,t); break;
+      case 'svg': output.value=svgOutput(W,H); break;
+      case 'comfy': output.value=comfyOutput(W,H,t); break;
+      case 'coco': output.value=cocoOutput(W,H); break;
+      default: output.value=textOutput(W,H,t); break;
+    }
+  }
+  function textOutput(W,H,t){
+    const lines=[];
     annotations.forEach((a,i)=>{
       const label=a.text && a.text.trim() ? a.text.trim() : `${t.labelDefault}${i+1}`;
       if(a.type==='point'){
@@ -993,7 +1016,56 @@
         }
       }
     });
-    output.value=lines.join('\n');
+    return lines.join('\n');
+  }
+  function jsonOutput(W,H){
+    const data={imageWidth:W,imageHeight:H,annotations:annotations.map(a=>({
+      type:a.type, x:Math.round(a.x), y:Math.round(a.y),
+      w:a.type==='box'?Math.round(a.w):0, h:a.type==='box'?Math.round(a.h):0,
+      text:a.text||''
+    }))};
+    return JSON.stringify(data,null,2);
+  }
+  function svgOutput(W,H){
+    let svg=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">\n`;
+    svg+=`<rect width="${W}" height="${H}" fill="#fff"/>\n`;
+    annotations.forEach((a,i)=>{
+      if(a.type==='point'){
+        svg+=`<circle cx="${Math.round(a.x)}" cy="${Math.round(a.y)}" r="4.5" fill="#ff4d6d" stroke="#fff" stroke-width="1.5"/>\n`;
+        svg+=`<text x="${Math.round(a.x+8)}" y="${Math.round(a.y+16)}" font-size="16" font-weight="600" fill="#000">#${a.id}</text>\n`;
+      } else {
+        svg+=`<rect x="${Math.round(a.x)}" y="${Math.round(a.y)}" width="${Math.round(a.w)}" height="${Math.round(a.h)}" fill="rgba(110,231,160,.15)" stroke="#6ee7a0" stroke-width="1.5"/>\n`;
+        svg+=`<text x="${Math.round(a.x)}" y="${Math.max(20,Math.round(a.y-8))}" font-size="16" font-weight="600" fill="#000">#${a.id}</text>\n`;
+      }
+    });
+    svg+=`</svg>`;
+    return svg;
+  }
+  function comfyOutput(W,H,t){
+    const lines=[];
+    annotations.forEach((a,i)=>{
+      const label=a.text && a.text.trim() ? a.text.trim() : `${t.labelDefault}${i+1}`;
+      if(a.type==='point'){
+        lines.push(`[${label}] x=${fmt(a.x/W*100)}%, y=${fmt(a.y/H*100)}%`);
+      } else {
+        lines.push(`[${label}] x=${fmt(a.x/W*100)}%, y=${fmt(a.y/H*100)}%, w=${fmt(a.w/W*100)}%, h=${fmt(a.h/H*100)}%`);
+      }
+    });
+    return lines.join('\n');
+  }
+  function cocoOutput(W,H){
+    const coco={
+      info:{description:'ImgCoordPicker export', version:'1.0'},
+      images:[{id:1, width:W, height:H, file_name:getCurrentImage()?getCurrentImage().name:'image'}],
+      annotations:annotations.map((a,i)=>({
+        id:i+1, image_id:1, category_id:1,
+        bbox:a.type==='box'?[Math.round(a.x),Math.round(a.y),Math.round(a.w),Math.round(a.h)]:[Math.round(a.x),Math.round(a.y),0,0],
+        area:a.type==='box'?Math.round(a.w*a.h):0,
+        iscrowd:0
+      })),
+      categories:[{id:1, name:'object'}]
+    };
+    return JSON.stringify(coco,null,2);
   }
 
   // ---------- copy ----------
@@ -1020,6 +1092,47 @@
   };
   $('clearBtn').onclick=()=>{ clearAll(); toastMsg(i18n[currentLang].clearToast); };
   resetBtn.onclick=()=>{ clearAll(); };
+
+  // ---------- export / import ----------
+  $('exportBtn').onclick=()=>{
+    if(!img||!annotations.length){ toastMsg(i18n[currentLang].noContent); return; }
+    const data=jsonOutput(img.naturalWidth, img.naturalHeight);
+    const blob=new Blob([data],{type:'application/json'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url; a.download=(getCurrentImage()?getCurrentImage().name:'annotations')+'_annotations.json';
+    a.click(); URL.revokeObjectURL(url);
+    toastMsg(i18n[currentLang].exportOK);
+  };
+  $('importBtn').onclick=()=>{ $('importInput').click(); };
+  $('importInput').onchange=e=>{
+    const file=e.target.files[0];
+    if(!file) return;
+    const reader=new FileReader();
+    reader.onload=ev=>{
+      try{
+        const data=JSON.parse(ev.target.result);
+        if(!data.annotations||!Array.isArray(data.annotations)) throw new Error('invalid');
+        pushHistory();
+        data.annotations.forEach(a=>{
+          if(a.type==='point'||a.type==='box'){
+            annotations.push({id:nextId++, type:a.type, x:a.x, y:a.y, w:a.w||0, h:a.h||0, text:a.text||''});
+          }
+        });
+        render(); renderList(); updateOutput();
+        toastMsg(i18n[currentLang].importOK);
+      }catch(e){
+        toastMsg(i18n[currentLang].importFail);
+      }
+    };
+    reader.readAsText(file);
+    e.target.value='';
+  };
+  // format selector
+  $('formatSel').onchange=()=>{
+    outputFormat=$('formatSel').value;
+    updateOutput();
+  };
 
   // ---------- tools / mode ----------
   // Auto mode: single click → point, long-press + drag → box
@@ -1143,7 +1256,18 @@
       groupLabel:'分组：',
       groupType:'按类型',
       groupText:'按文字',
-      noLabel:'未标注'
+      noLabel:'未标注',
+      export:'导出 JSON',
+      import:'导入 JSON',
+      exportOK:'✅ 已导出标注数据',
+      importOK:'✅ 已导入标注数据',
+      importFail:'❌ 导入失败，文件格式无效',
+      formatLabel:'格式：',
+      fmtText:'📄 文本',
+      fmtJson:'🧩 JSON',
+      fmtSvg:'🖼️ SVG',
+      fmtComfy:'🤖 ComfyUI/SD',
+      fmtCoco:'🎯 COCO'
     },
     en:{
       title:'🖱️ Image Coord Picker',
@@ -1193,7 +1317,18 @@
       groupLabel:'Group:',
       groupType:'By Type',
       groupText:'By Text',
-      noLabel:'No Label'
+      noLabel:'No Label',
+      export:'Export JSON',
+      import:'Import JSON',
+      exportOK:'✅ Annotations exported',
+      importOK:'✅ Annotations imported',
+      importFail:'❌ Import failed, invalid file',
+      formatLabel:'Format:',
+      fmtText:'📄 Text',
+      fmtJson:'🧩 JSON',
+      fmtSvg:'🖼️ SVG',
+      fmtComfy:'🤖 ComfyUI/SD',
+      fmtCoco:'🎯 COCO'
     }
   };
   let currentLang='zh';
