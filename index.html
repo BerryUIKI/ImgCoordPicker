@@ -213,7 +213,8 @@
       imgCanvas.height=im.naturalHeight;
       const ctx=imgCanvas.getContext('2d');
       ctx.drawImage(im,0,0);
-      fitToView();
+      // wait for layout to settle so stageWrap has real dimensions, then fit
+      requestAnimationFrame(()=>requestAnimationFrame(fitToView));
       toastMsg('图片加载成功：'+ im.naturalWidth +' × '+ im.naturalHeight);
     };
     im.src=url;
@@ -252,6 +253,13 @@
     const w=img.naturalWidth*scale, h=img.naturalHeight*scale;
     stageInner.style.width=w+'px';
     stageInner.style.height=h+'px';
+    // scale the canvas display size (buffer stays at natural resolution for crisp rendering)
+    imgCanvas.style.width=w+'px';
+    imgCanvas.style.height=h+'px';
+    // overlay SVG uses CSS inset:0 to fill stageInner; viewBox maps coordinates
+    overlay.style.width=w+'px';
+    overlay.style.height=h+'px';
+    overlay.setAttribute('viewBox', `0 0 ${img.naturalWidth} ${img.naturalHeight}`);
     lastLayout={w,h};
     render();
   }
@@ -297,12 +305,8 @@
 
   // ---------- rendering annotations ----------
   function render(){
-    // clear overlay
+    // clear overlay (SVG size/viewBox handled in layout())
     overlay.innerHTML='';
-    overlay.setAttribute('width', img? img.naturalWidth*scale:0);
-    overlay.setAttribute('height', img? img.naturalHeight*scale:0);
-    overlay.setAttribute('viewBox', `0 0 ${img?img.naturalWidth:0} ${img?img.naturalHeight:0}`);
-    // since we use viewBox, coordinates are in canvas space
     for(const a of annotations){
       if(a.type==='point'){
         const c=canvasToStage(a.x,a.y);
