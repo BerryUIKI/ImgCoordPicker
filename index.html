@@ -16,7 +16,8 @@
     --danger:#e74c3c; --warn:#f59e0b;
   }
   .icon-btn{background:none; border:none; color:var(--muted); cursor:pointer; font-size:18px; padding:4px 6px; line-height:1; border-radius:6px; transition:color .15s; display:inline-flex; align-items:center}
-  .icon-btn:hover{color:var(--text)}
+  button.icon-btn:hover{color:var(--accent); border-color:transparent}
+  :root.light button.icon-btn:hover{color:var(--accent)}
   .icon-btn .icon-sun{display:none}
   :root.light .icon-btn .icon-moon{display:none}
   :root.light .icon-btn .icon-sun{display:block}
