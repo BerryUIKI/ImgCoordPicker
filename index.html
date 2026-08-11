@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>图片坐标拾取工具</title>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#171a21; --panel2:#1e222b; --border:#2a2f3a;
+    --text:#e6e8eb; --muted:#9aa3af; --accent:#4f8cff; --accent2:#6ee7a0;
+    --danger:#ff6470; --warn:#ffc079;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; font-family:'Segoe UI',system-ui,-apple-system,sans-serif;
+    background:var(--bg); color:var(--text); height:100vh; overflow:hidden;
+  }
+  .app{display:flex; flex-direction:column; height:100vh}
+  header{
+    display:flex; align-items:center; gap:16px; padding:10px 16px;
+    background:var(--panel); border-bottom:1px solid var(--border); flex-shrink:0;
+  }
+  header h1{font-size:16px; margin:0; font-weight:600}
+  .spacer{flex:1}
+  button{
+    background:var(--panel2); color:var(--text); border:1px solid var(--border);
+    padding:7px 14px; border-radius:8px; cursor:pointer; font-size:13px;
+    transition:all .15s;
+  }
+  button:hover:not(:disabled){border-color:var(--accent); color:#fff}
+  button:disabled{opacity:.4; cursor:not-allowed}
+  button.primary{background:var(--accent); border-color:var(--accent); color:#fff}
+  button.primary:hover{filter:brightness(1.1)}
+  button.danger:hover{border-color:var(--danger); color:var(--danger)}
+  .main{flex:1; display:flex; min-height:0}
+  .left{flex:1; display:flex; flex-direction:column; min-width:0}
+  #stageWrap{
+    flex:1; position:relative; overflow:auto; background:
+      repeating-conic-gradient(#14161a 0% 25%, #101216 0% 50%) 0 0/24px 24px;
+  }
+  #stageWrap.drag-over::after{
+    content:'📁 拖放图片到此处'; position:absolute; inset:0;
+    display:flex; align-items:center; justify-content:center;
+    background:rgba(79,140,255,.2); backdrop-filter:blur(4px);
+    font-size:24px; font-weight:600; color:#fff; z-index:50;
+    border:3px dashed var(--accent); pointer-events:none;
+  }
+  #stage{position:relative; display:inline-block; margin:auto}
+  #stageInner{position:relative}
+  #imgCanvas{display:block; max-width:none}
+  #overlay{position:absolute; inset:0; pointer-events:none}
+  /* handle placement: overlay is inset:0 of stageInner which wraps the canvas */
+  .magnifier{
+    position:absolute; width:120px; height:120px; border:2px solid var(--accent);
+    border-radius:8px; background:#000; box-shadow:0 4px 20px rgba(0,0,0,.6);
+    display:none; pointer-events:none; z-index:20; overflow:hidden;
+  }
+  .magnifier canvas{width:120px; height:120px; image-rendering:pixelated}
+  .mag-label{
+    position:absolute; bottom:0; left:0; right:0; background:rgba(0,0,0,.7);
+    font-size:11px; font-family:Consolas,monospace; padding:2px 4px; text-align:center;
+  }
+  #toolbar{
+    display:flex; align-items:center; gap:8px; padding:8px 12px;
+    background:var(--panel); border-top:1px solid var(--border); flex-shrink:0; flex-wrap:wrap;
+  }
+  .tool{display:flex; align-items:center; gap:6px; padding:6px 10px; border-radius:8px;
+    border:1px solid var(--border); cursor:pointer; font-size:13px; background:var(--panel2); user-select:none}
+  .tool.active{border-color:var(--accent); color:#fff; background:rgba(79,140,255,.15)}
+  .tool .dot{width:10px; height:10px; border-radius:50%; background:var(--muted)}
+  .tool.active .dot{background:var(--accent)}
+  .hint{font-size:12px; color:var(--muted)}
+  .right{
+    width:360px; background:var(--panel); border-left:1px solid var(--border);
+    display:flex; flex-direction:column; min-height:0;
+  }
+  .right h2{font-size:13px; margin:0; padding:12px; border-bottom:1px solid var(--border);
+    display:flex; align-items:center; gap:8px}
+  .right h2 .count{background:var(--accent); color:#fff; border-radius:20px; padding:0 8px; font-size:12px}
+  #list{flex:1; overflow-y:auto; padding:8px}
+  .item{
+    background:var(--panel2); border:1px solid var(--border); border-radius:8px;
+    padding:8px; margin-bottom:8px;
+  }
+  .item .line{display:flex; align-items:center; gap:6px; margin-bottom:6px}
+  .item .badge{font-size:11px; padding:2px 7px; border-radius:4px; font-weight:600}
+  .badge.point{background:rgba(79,140,255,.2); color:var(--accent)}
+  .badge.box{background:rgba(110,231,160,.2); color:var(--accent2)}
+  .item .coords{font-family:Consolas,monospace; font-size:12px; color:var(--muted); flex:1; word-break:break-all}
+  .item .del{margin-left:auto; background:none; border:none; color:var(--muted); cursor:pointer; font-size:16px; padding:0 4px}
+  .item .del:hover{color:var(--danger)}
+  .item input[type=text]{
+    width:100%; background:var(--bg); border:1px solid var(--border); color:var(--text);
+    border-radius:6px; padding:6px 8px; font-size:13px; outline:none;
+  }
+  .item input[type=text]:focus{border-color:var(--accent)}
+  .item .meta{font-size:11px; color:var(--muted); margin-top:4px; font-family:Consolas,monospace}
+  .right .actions{padding:10px 12px; border-top:1px solid var(--border); display:flex; gap:8px; flex-wrap:wrap}
+  textarea{
+    width:100%; background:var(--bg); color:var(--text); border:1px solid var(--border);
+    border-radius:8px; padding:8px; font-size:12px; font-family:Consolas,monospace;
+    resize:vertical; min-height:120px; outline:none; white-space:pre;
+  }
+  textarea:focus{border-color:var(--accent)}
+  .seg{display:flex; border:1px solid var(--border); border-radius:8px; overflow:hidden}
+  .seg button{border:none; border-radius:0; padding:6px 10px; font-size:12px; background:var(--panel2)}
+  .seg button.on{background:var(--accent); color:#fff}
+  .empty{padding:20px; text-align:center; color:var(--muted); font-size:13px}
+  .toast{
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%);
+    background:#222; border:1px solid var(--border); color:var(--text);
+    padding:9px 16px; border-radius:8px; font-size:13px; z-index:100;
+    opacity:0; transition:opacity .2s; pointer-events:none;
+  }
+  .toast.show{opacity:1}
+  ::-webkit-scrollbar{width:10px; height:10px}
+  ::-webkit-scrollbar-thumb{background:#333; border-radius:5px}
+  ::-webkit-scrollbar-track{background:transparent}
+  .nummode{font-size:12px; color:var(--accent2); font-family:Consolas,monospace}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>🖱️ 图片坐标拾取工具</h1>
+    <span class="hint">点选 / 框选 · 像素 + 百分比输出</span>
+    <div class="spacer"></div>
+    <button id="uploadBtn" class="primary">📁 上传图片</button>
+    <input type="file" id="fileInput" accept="image/*" hidden>
+    <button id="resetBtn">🗑️ 清空标注</button>
+  </header>
+
+  <div class="main">
+    <div class="left">
+      <div id="stageWrap">
+        <div id="stage">
+          <div id="stageInner">
+            <canvas id="imgCanvas"></canvas>
+            <svg id="overlay"></svg>
+          </div>
+        </div>
+        <div class="magnifier" id="magnifier">
+          <canvas id="magCanvas" width="120" height="120"></canvas>
+          <div class="mag-label" id="magLabel"></div>
+        </div>
+      </div>
+      <div id="toolbar">
+        <div class="tool active" data-tool="point" id="toolPoint">
+          <span class="dot"></span> 点选
+        </div>
+        <div class="tool" data-tool="box" id="toolBox">
+          <span class="dot"></span> 框选
+        </div>
+        <div class="seg" style="margin-left:8px" id="modeSeg">
+          <button data-mode="pct" class="on">百分比</button>
+          <button data-mode="both">像素+百分比</button>
+        </div>
+        <span class="hint" id="toolHint">点击图片拾取坐标点</span>
+        <div class="spacer"></div>
+        <span class="hint">缩放：Ctrl+滚轮</span>
+      </div>
+    </div>
+
+    <div class="right">
+      <h2>标注列表 <span class="count" id="count">0</span></h2>
+      <div id="list"></div>
+      <div class="actions">
+        <button id="addManualBtn">➕ 手动添加</button>
+        <button id="copyBtn">📋 复制结果</button>
+        <button id="clearBtn" class="danger">🧹 清空</button>
+      </div>
+      <div style="max-height:120px; overflow:hidden; border-top:1px solid var(--border)">
+        <textarea id="output" placeholder="输出结果将显示在这里…" readonly></textarea>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  'use strict';
+  // ---------- refs ----------
+  const $ = id => document.getElementById(id);
+  const fileInput=$('fileInput'), uploadBtn=$('uploadBtn'), resetBtn=$('resetBtn');
+  const imgCanvas=$('imgCanvas'), overlay=$('overlay'), stage=$('stage'), stageWrap=$('stageWrap'), stageInner=$('stageInner');
+  const magnifier=$('magnifier'), magCanvas=$('magCanvas'), magLabel=$('magLabel');
+  const toolPoint=$('toolPoint'), toolBox=$('toolBox'), modeSeg=$('modeSeg');
+  const listEl=$('list'), output=$('output'), countEl=$('count');
+  const toolHint=$('toolHint'), toast=$('toast');
+
+  // ---------- state ----------
+  let img=null;                        // HTMLImageElement
+  let scale=1;
+  let tool='point';                    // point | box
+  let mode='pct';                      // pct | both
+  const NS='http://www.w3.org/2000/svg';
+  let annotations=[];                  // {id,type,x,y,w,h,text}
+  let nextId=1;
+  let dragging=null;                   // {startX,startY,nx,ny,evt}
+  let draftRect=null;                  // svg rect for box draft
+  let hoverPx=null;                    // {x,y} canvas px for magnifier
+  let lastLayout=null;
+
+  // ---------- image loading ----------
+  function loadFile(file){
+    if(!file) return;
+    const url=URL.createObjectURL(file);
+    const im=new Image();
+    im.onload=()=>{
+      img=im;
+      imgCanvas.width=im.naturalWidth;
+      imgCanvas.height=im.naturalHeight;
+      const ctx=imgCanvas.getContext('2d');
+      ctx.drawImage(im,0,0);
+      scale=1;
+      layout();
+      toastMsg('图片加载成功：'+ im.naturalWidth +' × '+ im.naturalHeight);
+    };
+    im.src=url;
+  }
+  uploadBtn.onclick=()=>fileInput.click();
+  fileInput.onchange=e=>loadFile(e.target.files[0]);
+
+  // ---------- drag & drop ----------
+  stageWrap.addEventListener('dragenter', e=>{ e.preventDefault(); stageWrap.classList.add('drag-over'); });
+  stageWrap.addEventListener('dragover', e=>{ e.preventDefault(); stageWrap.classList.add('drag-over'); });
+  stageWrap.addEventListener('dragleave', e=>{ e.preventDefault(); stageWrap.classList.remove('drag-over'); });
+  stageWrap.addEventListener('drop', e=>{
+    e.preventDefault();
+    stageWrap.classList.remove('drag-over');
+    const files=e.dataTransfer.files;
+    if(files.length && files[0].type.startsWith('image/')){
+      loadFile(files[0]);
+    } else {
+      toastMsg('请拖入图片文件');
+    }
+  });
+
+  // ---------- layout / zoom ----------
+  function layout(){
+    if(!img) return;
+    const w=img.naturalWidth*scale, h=img.naturalHeight*scale;
+    stageInner.style.width=w+'px';
+    stageInner.style.height=h+'px';
+    if(lastLayout && lastLayout.w===w && lastLayout.h===h) {} 
+    lastLayout={w,h};
+    render();
+  }
+  function zoomAt(factor, cx, cy){
+    if(!img) return;
+    const r=stageWrap.getBoundingClientRect();
+    const mw=stageInner.getBoundingClientRect();
+    const px=(cx - r.left) - (mw.left - r.left);
+    const py=(cy - r.top) - (mw.top - r.top);
+    const old=scale;
+    let ns=Math.min(40, Math.max(0.05, old*factor));
+    scale=ns;
+    layout();
+    // keep point under cursor stable
+    const nw=stageInner.getBoundingClientRect();
+    const nx=(px/old)*ns;
+    const ny=(py/old)*ns;
+    stageWrap.scrollLeft += (nw.left-r.left) - ((mw.left-r.left) + (px - nx));
+    stageWrap.scrollTop  += (nw.top-r.top)  - ((mw.top-r.top)  + (py - ny));
+  }
+  stageWrap.addEventListener('wheel', e=>{
+    if(!img) return;
+    e.preventDefault();
+    if(e.ctrlKey){
+      const r=stageWrap.getBoundingClientRect();
+      zoomAt(e.deltaY<0?1.15:1/1.15, e.clientX, e.clientY);
+    } else {
+      // allow normal scroll
+    }
+  }, {passive:false});
+
+  // ---------- canvas coordinate helpers ----------
+  function eventToCanvas(e){
+    const r=stageInner.getBoundingClientRect();
+    const x=(e.clientX-r.left)/scale;
+    const y=(e.clientY-r.top)/scale;
+    return {x, y};
+  }
+  function canvasToStage(x,y){
+    const r=stageInner.getBoundingClientRect();
+    return {sx:x*scale + r.left, sy:y*scale + r.top};
+  }
+
+  // ---------- rendering annotations ----------
+  function render(){
+    // clear overlay
+    overlay.innerHTML='';
+    overlay.setAttribute('width', img? img.naturalWidth*scale:0);
+    overlay.setAttribute('height', img? img.naturalHeight*scale:0);
+    overlay.setAttribute('viewBox', `0 0 ${img?img.naturalWidth:0} ${img?img.naturalHeight:0}`);
+    // since we use viewBox, coordinates are in canvas space
+    for(const a of annotations){
+      if(a.type==='point'){
+        const c=canvasToStage(a.x,a.y);
+        const circ=document.createElementNS(NS,'circle');
+        circ.setAttribute('cx',a.x); circ.setAttribute('cy',a.y);
+        circ.setAttribute('r',4); circ.setAttribute('fill','#ff4d6d'); circ.setAttribute('stroke','#fff');
+        circ.setAttribute('stroke-width',1.2);
+        overlay.appendChild(circ);
+        const txt=document.createElementNS(NS,'text');
+        txt.setAttribute('x',a.x+7); txt.setAttribute('y',a.y-7);
+        txt.setAttribute('fill','#fff'); txt.setAttribute('font-size','13');
+        txt.setAttribute('stroke','#000'); txt.setAttribute('stroke-width','1');
+        txt.setAttribute('paint-order','stroke');
+        txt.textContent = (a.text||('#'+a.id));
+        overlay.appendChild(txt);
+      } else {
+        const rect=document.createElementNS(NS,'rect');
+        rect.setAttribute('x',a.x); rect.setAttribute('y',a.y);
+        rect.setAttribute('width',a.w); rect.setAttribute('height',a.h);
+        rect.setAttribute('fill','rgba(110,231,160,.15)');
+        rect.setAttribute('stroke','#6ee7a0'); rect.setAttribute('stroke-width','1.5');
+        overlay.appendChild(rect);
+        const txt=document.createElementNS(NS,'text');
+        txt.setAttribute('x',a.x); txt.setAttribute('y',Math.max(14,a.y-7));
+        txt.setAttribute('fill','#fff'); txt.setAttribute('font-size','13');
+        txt.setAttribute('stroke','#000'); txt.setAttribute('stroke-width','1');
+        txt.setAttribute('paint-order','stroke');
+        txt.textContent=(a.text||('#'+a.id));
+        overlay.appendChild(txt);
+      }
+    }
+  }
+
+  // ---------- magnifier ----------
+  function moveMagnifier(e){
+    if(!img){ magnifier.style.display='none'; return; }
+    const pt=eventToCanvas(e);
+    hoverPx={x:Math.round(pt.x), y:Math.round(pt.y)};
+    const r=stageWrap.getBoundingClientRect();
+    let mx=e.clientX-r.left+16, my=e.clientY-r.top+16;
+    if(mx+120>r.width) mx=e.clientX-r.left-136;
+    if(my+120>r.height) my=e.clientY-r.top-136;
+    magnifier.style.left=mx+'px'; magnifier.style.top=my+'px';
+    magnifier.style.display='block';
+    const ctx=magCanvas.getContext('2d');
+    ctx.imageSmoothingEnabled=false;
+    ctx.clearRect(0,0,120,120);
+    const src=img.naturalWidth;
+    const z=10;
+    const half=60/z;
+    ctx.drawImage(imgCanvas,
+      Math.max(0,Math.min(src-0.5, pt.x-half)), Math.max(0,Math.min(img.naturalHeight-0.5, pt.y-half)),
+      half*2, half*2, 0,0,120,120);
+    magLabel.textContent=`${hoverPx.x}, ${hoverPx.y}`;
+  }
+  function hideMagnifier(){ if(dragging) return; magnifier.style.display='none'; }
+
+  // ---------- add / annotate ----------
+  function addAnnotation(data){
+    const id=nextId++;
+    const a=Object.assign({id}, data);
+    annotations.push(a);
+    render(); renderList();
+    return a;
+  }
+  function pointAt(e){
+    const pt=eventToCanvas(e);
+    const a=addAnnotation({type:'point', x:pt.x, y:pt.y, w:0, h:0, text:''});
+    focusInput(a.id);
+  }
+  function finishBox(){
+    if(!dragging) return;
+    // normalize
+    let{startX,startY,nx,ny}=dragging;
+    const x=Math.min(startX,nx), y=Math.min(startY,ny);
+    const w=Math.abs(nx-startX), h=Math.abs(ny-startY);
+    overlay.removeChild(draftRect); draftRect=null;
+    const a=addAnnotation({type:'box', x, y, w, h, text:''});
+    dragging=null;
+    focusInput(a.id);
+  }
+
+  function focusInput(id){
+    const el=document.querySelector(`.item input[data-id="${id}"]`);
+    if(el){ el.focus(); el.select(); }
+  }
+
+  // ---------- mouse events ----------
+  stageInner.addEventListener('mousemove', e=>{
+    moveMagnifier(e);
+    if(dragging && tool==='box'){
+      const pt=eventToCanvas(e);
+      dragging.nx=pt.x; dragging.ny=pt.y;
+      updateDraft();
+    }
+  });
+  stageInner.addEventListener('mousedown', e=>{
+    if(!img) return;
+    e.preventDefault();
+    const pt=eventToCanvas(e);
+    if(tool==='point'){
+      pointAt(e);
+    } else {
+      dragging={startX:pt.x, startY:pt.y, nx:pt.x, ny:pt.y};
+      const rect=document.createElementNS(NS,'rect');
+      rect.setAttribute('fill','rgba(110,231,160,.15)');
+      rect.setAttribute('stroke','#6ee7a0'); rect.setAttribute('stroke-width','1.5');
+      rect.setAttribute('stroke-dasharray','4 3');
+      overlay.appendChild(rect);
+      draftRect=rect;
+      updateDraft();
+    }
+  });
+  window.addEventListener('mouseup', e=>{
+    if(dragging && tool==='box') finishBox();
+  });
+  stageInner.addEventListener('mouseleave', hideMagnifier);
+
+  function updateDraft(){
+    if(!draftRect||!dragging) return;
+    let x=Math.min(dragging.startX,dragging.nx), y=Math.min(dragging.startY,dragging.ny);
+    let w=Math.abs(dragging.nx-dragging.startX), h=Math.abs(dragging.ny-dragging.startY);
+    draftRect.setAttribute('x',x); draftRect.setAttribute('y',y);
+    draftRect.setAttribute('width',w); draftRect.setAttribute('height',h);
+  }
+
+  // drag to move image when zoomed? skip for simplicity
+
+  // ---------- numeric formatting ----------
+  function fmt(v){
+    const p=2;
+    let s=Number(v).toFixed(p);
+    return s;
+  }
+
+  // ---------- list rendering ----------
+  function renderList(){
+    listEl.innerHTML='';
+    countEl.textContent=annotations.length;
+    if(!annotations.length){
+      listEl.innerHTML='<div class="empty">暂无标注。<br>选择「点选」点击图片，或「框选」拖动选择区域。</div>';
+      updateOutput();
+      return;
+    }
+    annotations.forEach((a,i)=>{
+      const div=document.createElement('div');
+      div.className='item';
+      // line
+      const line=document.createElement('div'); line.className='line';
+      const badge=document.createElement('span');
+      badge.className='badge '+(a.type==='point'?'point':'box');
+      badge.textContent=a.type==='point'?`点选 ${i+1}`:`框选 ${i+1}`;
+      const coords=document.createElement('span'); coords.className='coords';
+      coords.textContent=coordText(a);
+      const del=document.createElement('button'); del.className='del'; del.textContent='✕';
+      del.title='删除';
+      del.onclick=()=>{removeAnnotation(a.id)};
+      line.append(badge, coords, del);
+      // text input
+      const input=document.createElement('input');
+      input.type='text'; input.dataset.id=a.id;
+      input.placeholder='输入提示词 / 文字…';
+      input.value=a.text||'';
+      input.oninput=()=>{a.text=input.value; render(); updateOutput();};
+      const meta=document.createElement('div'); meta.className='meta';
+      meta.textContent=metaText(a);
+      div.append(line,input,meta);
+      listEl.appendChild(div);
+    });
+    updateOutput();
+  }
+
+  function coordText(a){
+    if(a.type==='point'){
+      return `x=${fmt(a.x/img.naturalWidth*100)}%, y=${fmt(a.y/img.naturalHeight*100)}%`;
+    } else {
+      return `(${fmt(a.x/img.naturalWidth*100)}%, ${fmt(a.y/img.naturalHeight*100)}%) → (${fmt((a.x+a.w)/img.naturalWidth*100)}%, ${fmt((a.y+a.h)/img.naturalHeight*100)}%)`;
+    }
+  }
+  function metaText(a){
+    if(a.type==='point'){
+      return `像素: (${Math.round(a.x)}, ${Math.round(a.y)})`;
+    } else {
+      return `像素: (${Math.round(a.x)}, ${Math.round(a.y)}) → (${Math.round(a.x+a.w)}, ${Math.round(a.y+a.h)}) · ${Math.round(a.w)}×${Math.round(a.h)}px`;
+    }
+  }
+
+  function removeAnnotation(id){
+    annotations=annotations.filter(a=>a.id!==id);
+    render(); renderList();
+  }
+  function clearAll(){
+    annotations=[]; nextId=1;
+    render(); renderList();
+  }
+
+  // ---------- output ----------
+  function updateOutput(){
+    if(!img){ output.value=''; return; }
+    const W=img.naturalWidth, H=img.naturalHeight;
+    const lines=[];
+    annotations.forEach((a,i)=>{
+      const label=a.text && a.text.trim() ? a.text.trim() : `标注${i+1}`;
+      if(a.type==='point'){
+        if(mode==='pct'){
+          lines.push(`${i+1}. x=${fmt(a.x/W*100)}%, y=${fmt(a.y/H*100)}% :（点选：${label}）`);
+        } else {
+          lines.push(`${i+1}. x=${Math.round(a.x)}px, y=${Math.round(a.y)}px (${fmt(a.x/W*100)}%, ${fmt(a.y/H*100)}%) :（点选：${label}）`);
+        }
+      } else {
+        const x1=fmt(a.x/W*100), y1=fmt(a.y/H*100);
+        const x2=fmt((a.x+a.w)/W*100), y2=fmt((a.y+a.h)/H*100);
+        if(mode==='pct'){
+          lines.push(`${i+1}. x=${x1}%, y=${y1}% to x=${x2}%, y=${y2}% :（框选：${label}）`);
+        } else {
+          lines.push(`${i+1}. x=${Math.round(a.x)}px, y=${Math.round(a.y)}px to x=${Math.round(a.x+a.w)}px, y=${Math.round(a.y+a.h)}px (${x1}%,${y1}% → ${x2}%,${y2}%) :（框选：${label}）`);
+        }
+      }
+    });
+    output.value=lines.join('\n');
+  }
+
+  // ---------- copy ----------
+  $('copyBtn').onclick=async()=>{
+    if(!output.value){ toastMsg('没有可复制的内容'); return; }
+    try{
+      await navigator.clipboard.writeText(output.value);
+      toastMsg('已复制到剪贴板 ✅');
+    }catch(e){
+      output.select();
+      document.execCommand('copy');
+      toastMsg('已复制（兼容方式）✅');
+    }
+  };
+
+  // ---------- manual add ----------
+  $('addManualBtn').onclick=()=>{
+    if(!img){ toastMsg('请先上传图片'); return; }
+    const type=tool;
+    const a=addAnnotation({type, x:img.naturalWidth/2, y:img.naturalHeight/2, w:type==='box'?80:0, h:type==='box'?60:0, text:''});
+    focusInput(a.id);
+    toastMsg(type==='box'?'已添加默认框选，可点击输入文字':'已添加默认点选，可点击输入文字');
+  };
+  $('clearBtn').onclick=()=>{ clearAll(); toastMsg('已清空全部标注'); };
+  resetBtn.onclick=()=>{ clearAll(); };
+
+  // ---------- tools / mode ----------
+  function setTool(t){
+    tool=t;
+    toolPoint.classList.toggle('active',t==='point');
+    toolBox.classList.toggle('active',t==='box');
+    toolHint.textContent = t==='point' ? '点击图片拾取坐标点' : '按住鼠标拖动框选区域';
+  }
+  toolPoint.onclick=()=>{ setTool('point'); dragging=null; if(draftRect){overlay.removeChild(draftRect);draftRect=null;} };
+  toolBox.onclick=()=>{ setTool('box'); };
+  modeSeg.querySelectorAll('button').forEach(b=>{
+    b.onclick=()=>{
+      modeSeg.querySelectorAll('button').forEach(x=>x.classList.remove('on'));
+      b.classList.add('on');
+      mode=b.dataset.mode;
+      renderList();
+      toastMsg(mode==='pct'?'输出模式：百分比':'输出模式：像素 + 百分比');
+    };
+  });
+
+  // keyboard delete
+  document.addEventListener('keydown', e=>{
+    if(e.key==='Delete' && document.activeElement && document.activeElement.tagName==='INPUT'){
+      // let user edit text; ignore
+    }
+  });
+
+  // toast
+  let toastTimer;
+  function toastMsg(m){
+    toast.textContent=m; toast.classList.add('show');
+    clearTimeout(toastTimer); toastTimer=setTimeout(()=>toast.classList.remove('show'),1800);
+  }
+
+  // init
+  renderList();
+  setTool('point');
+  toastMsg('👆 点击「上传图片」开始');
+})();
+</script>
+</body>
+</html>
