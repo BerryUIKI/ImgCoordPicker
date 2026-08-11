@@ -255,6 +255,9 @@
   let hoverPx=null;                    // {x,y} canvas px for magnifier
   let lastLayout=null;
   let thumbsCollapsed=false;
+  let history=[];                      // undo stack [{annotations,nextId}]
+  let redoStack=[];                    // redo stack
+  const HISTORY_LIMIT=50;
   const DRAG_THRESHOLD=5;              // px movement to trigger box mode
   const CLICK_MAX_MS=250;              // max mousedown-to-mouseup time for a click
 
@@ -287,6 +290,34 @@
     renderList();
     updateOutput();
     renderThumbs();
+  }
+
+  // ---------- undo / redo ----------
+  function pushHistory(){
+    history.push(JSON.parse(JSON.stringify({annotations, nextId})));
+    if(history.length>HISTORY_LIMIT) history.shift();
+    redoStack=[];
+  }
+  function applyState(snap){
+    annotations.length=0;
+    snap.annotations.forEach(a=>annotations.push(a));
+    nextId=snap.nextId;
+    saveCurrentState();
+    render(); renderList(); updateOutput();
+  }
+  function undo(){
+    if(!history.length){ toastMsg(i18n[currentLang].noUndo); return; }
+    const snap=history.pop();
+    redoStack.push(JSON.parse(JSON.stringify({annotations, nextId})));
+    applyState(snap);
+    toastMsg(i18n[currentLang].undoToast);
+  }
+  function redo(){
+    if(!redoStack.length){ toastMsg(i18n[currentLang].noRedo); return; }
+    const snap=redoStack.pop();
+    history.push(JSON.parse(JSON.stringify({annotations, nextId})));
+    applyState(snap);
+    toastMsg(i18n[currentLang].redoToast);
   }
   function addImage(file, im){
     const id='img_'+Date.now()+'_'+Math.random().toString(36).slice(2,6);
@@ -531,6 +562,7 @@
 
   // ---------- add / annotate (auto mode: click = point, long-press+drag = box) ----------
   function addAnnotation(data){
+    pushHistory();
     const id=nextId++;
     const a=Object.assign({id}, data);
     annotations.push(a);
@@ -716,10 +748,12 @@
   }
 
   function removeAnnotation(id){
+    pushHistory();
     annotations=annotations.filter(a=>a.id!==id);
     render(); renderList();
   }
   function clearAll(){
+    pushHistory();
     annotations=[]; nextId=1;
     render(); renderList();
   }
@@ -798,7 +832,16 @@
 
   // keyboard delete
   document.addEventListener('keydown', e=>{
-    if(e.key==='Delete' && document.activeElement && document.activeElement.tagName==='INPUT'){
+    const tag=document.activeElement&&document.activeElement.tagName;
+    if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==='z'){
+      e.preventDefault();
+      if(e.shiftKey) redo(); else undo();
+      return;
+    }
+    if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==='y'){
+      e.preventDefault(); redo(); return;
+    }
+    if(e.key==='Delete' && tag==='INPUT'){
       // let user edit text; ignore
     }
   });
@@ -849,7 +892,11 @@
       metaPx:'像素',
       magCoord:'',
       thumbsTitle:'📷 图集',
-      cantRemoveLast:'至少保留一张图片'
+      cantRemoveLast:'至少保留一张图片',
+      noUndo:'没有可撤销的操作',
+      noRedo:'没有可重做的操作',
+      undoToast:'↩ 已撤销',
+      redoToast:'↪ 已重做'
     },
     en:{
       title:'🖱️ Image Coord Picker',
@@ -888,7 +935,11 @@
       metaPx:'Pixel',
       magCoord:'',
       thumbsTitle:'📷 Gallery',
-      cantRemoveLast:'Keep at least one image'
+      cantRemoveLast:'Keep at least one image',
+      noUndo:'Nothing to undo',
+      noRedo:'Nothing to redo',
+      undoToast:'↩ Undo',
+      redoToast:'↪ Redo'
     }
   };
   let currentLang='zh';
