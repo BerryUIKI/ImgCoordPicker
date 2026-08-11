@@ -36,10 +36,16 @@
   .thumbs{
     width:180px; background:var(--panel); border-right:1px solid var(--border);
     display:flex; flex-direction:column; min-height:0; flex-shrink:0; transition:width .15s;
+    position:relative;
   }
-  .thumbs.collapsed{width:0; border-right:none}
+  .thumbs.collapsed{width:0; border-right:none; overflow:visible}
   .thumbs.collapsed .thumbList{display:none}
-  .thumbs.collapsed .thumbsHead{justify-content:center}
+  .thumbs.collapsed .thumbsHead{visibility:hidden}
+  .thumbs.collapsed #thumbsToggle{
+    visibility:visible; position:absolute; right:-28px; top:10px;
+    background:var(--panel); border:1px solid var(--border); border-left:none;
+    border-radius:0 8px 8px 0; padding:8px 6px; z-index:10; width:28px; text-align:center;
+  }
   .thumbsHead{
     display:flex; align-items:center; gap:6px; padding:10px; border-bottom:1px solid var(--border);
     font-size:12px; font-weight:600; color:var(--muted); flex-shrink:0;
@@ -1144,7 +1150,6 @@
     $('thumbsPanel').classList.toggle('collapsed', thumbsCollapsed);
     $('thumbsToggle').textContent=thumbsCollapsed?'▶':'◀';
   };
-  // grid toggle
   $('gridToggle').onclick=()=>{
     showGrid=!showGrid;
     $('gridToggle').classList.toggle('active', showGrid);
