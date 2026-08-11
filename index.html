@@ -305,24 +305,45 @@
   }
 
   // ---------- rendering annotations ----------
+  // draw a label pill (colored background + text) at a canvas position
+  function drawLabel(cx, cy, text, color, anchor){
+    const g=document.createElementNS(NS,'g');
+    const t=document.createElementNS(NS,'text');
+    const fs=16;
+    t.setAttribute('font-size',fs);
+    t.setAttribute('font-weight','600');
+    t.setAttribute('fill','#fff');
+    t.setAttribute('x',cx); t.setAttribute('y',cy);
+    if(anchor==='end') t.setAttribute('text-anchor','end');
+    t.textContent=text;
+    // measure
+    overlay.appendChild(t);
+    const bb=t.getBBox();
+    overlay.removeChild(t);
+    const pad=4;
+    const r=document.createElementNS(NS,'rect');
+    r.setAttribute('x',bb.x-pad); r.setAttribute('y',bb.y-pad);
+    r.setAttribute('width',bb.width+pad*2); r.setAttribute('height',bb.height+pad*2);
+    r.setAttribute('rx',5); r.setAttribute('ry',5);
+    r.setAttribute('fill',color);
+    r.setAttribute('stroke','rgba(0,0,0,.6)'); r.setAttribute('stroke-width','1');
+    g.appendChild(r);
+    g.appendChild(t);
+    overlay.appendChild(g);
+  }
+
   function render(){
     // clear overlay (SVG size/viewBox handled in layout())
     overlay.innerHTML='';
     for(const a of annotations){
       if(a.type==='point'){
-        const c=canvasToStage(a.x,a.y);
         const circ=document.createElementNS(NS,'circle');
         circ.setAttribute('cx',a.x); circ.setAttribute('cy',a.y);
-        circ.setAttribute('r',4); circ.setAttribute('fill','#ff4d6d'); circ.setAttribute('stroke','#fff');
-        circ.setAttribute('stroke-width',1.2);
+        circ.setAttribute('r',4.5); circ.setAttribute('fill','#ff4d6d'); circ.setAttribute('stroke','#fff');
+        circ.setAttribute('stroke-width',1.5);
         overlay.appendChild(circ);
-        const txt=document.createElementNS(NS,'text');
-        txt.setAttribute('x',a.x+7); txt.setAttribute('y',a.y-7);
-        txt.setAttribute('fill','#fff'); txt.setAttribute('font-size','13');
-        txt.setAttribute('stroke','#000'); txt.setAttribute('stroke-width','1');
-        txt.setAttribute('paint-order','stroke');
-        txt.textContent = (a.text||('#'+a.id));
-        overlay.appendChild(txt);
+        // label below-right of the point
+        drawLabel(a.x+8, a.y+16, (a.text||('#'+a.id)), 'rgba(255,77,109,.92)', 'start');
       } else {
         const rect=document.createElementNS(NS,'rect');
         rect.setAttribute('x',a.x); rect.setAttribute('y',a.y);
@@ -330,13 +351,8 @@
         rect.setAttribute('fill','rgba(110,231,160,.15)');
         rect.setAttribute('stroke','#6ee7a0'); rect.setAttribute('stroke-width','1.5');
         overlay.appendChild(rect);
-        const txt=document.createElementNS(NS,'text');
-        txt.setAttribute('x',a.x); txt.setAttribute('y',Math.max(14,a.y-7));
-        txt.setAttribute('fill','#fff'); txt.setAttribute('font-size','13');
-        txt.setAttribute('stroke','#000'); txt.setAttribute('stroke-width','1');
-        txt.setAttribute('paint-order','stroke');
-        txt.textContent=(a.text||('#'+a.id));
-        overlay.appendChild(txt);
+        // label at top-left of the box, with a green pill matching the frame
+        drawLabel(a.x, Math.max(20,a.y-8), (a.text||('#'+a.id)), 'rgba(110,231,160,.92)', 'start');
       }
     }
   }
@@ -429,12 +445,12 @@
         overlay.appendChild(rect);
         draftRect=rect;
         // create draft label
+        const lblG=document.createElementNS(NS,'g');
         const lbl=document.createElementNS(NS,'text');
-        lbl.setAttribute('fill','#fff'); lbl.setAttribute('font-size','12');
-        lbl.setAttribute('stroke','#000'); lbl.setAttribute('stroke-width','1');
-        lbl.setAttribute('paint-order','stroke');
-        overlay.appendChild(lbl);
-        draftLabel=lbl;
+        lbl.setAttribute('fill','#fff'); lbl.setAttribute('font-size','14');
+        lbl.setAttribute('font-weight','600');
+        overlay.appendChild(lblG);
+        draftLabel=lblG;
         updateDraft();
       }
     }
@@ -462,13 +478,30 @@
     draftRect.setAttribute('x',x); draftRect.setAttribute('y',y);
     draftRect.setAttribute('width',w); draftRect.setAttribute('height',h);
     if(draftLabel){
+      draftLabel.innerHTML='';
       const labelText=`${Math.round(w)} × ${Math.round(h)}`;
-      draftLabel.textContent=labelText;
-      // position label at top-right of selection
+      // build pill inside the <g>
+      const t=document.createElementNS(NS,'text');
+      const fs=14;
+      t.setAttribute('font-size',fs);
+      t.setAttribute('font-weight','600');
+      t.setAttribute('fill','#fff');
       const lx=x+w, ly=y;
-      draftLabel.setAttribute('x',lx-4);
-      draftLabel.setAttribute('y',Math.max(14,ly-4));
-      draftLabel.setAttribute('text-anchor','end');
+      t.setAttribute('x',lx-4);
+      t.setAttribute('y',Math.max(20,ly-4));
+      t.setAttribute('text-anchor','end');
+      t.textContent=labelText;
+      draftLabel.appendChild(t);
+      // measure and draw pill bg
+      const bb=t.getBBox();
+      const pad=4;
+      const r=document.createElementNS(NS,'rect');
+      r.setAttribute('x',bb.x-pad); r.setAttribute('y',bb.y-pad);
+      r.setAttribute('width',bb.width+pad*2); r.setAttribute('height',bb.height+pad*2);
+      r.setAttribute('rx',5); r.setAttribute('ry',5);
+      r.setAttribute('fill','rgba(110,231,160,.92)');
+      r.setAttribute('stroke','rgba(0,0,0,.6)'); r.setAttribute('stroke-width','1');
+      draftLabel.insertBefore(r, t);
     }
   }
 
