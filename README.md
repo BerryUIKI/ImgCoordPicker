@@ -1,6 +1,6 @@
-# ImgCoordPicker 图片坐标拾取工具
+# BerryUIKI 图像坐标拾取工具
 
-> 🖱️ 图片坐标拾取工具 —— 为提示词 / AI 工作流而生
+> 🖱️ BerryUIKI 图像坐标拾取工具 —— 为提示词 / AI 工作流而生
 
 <p>
   <a href="https://github.com/BerryUIKI/ImgCoordPicker/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
@@ -11,6 +11,10 @@
 </p>
 
 一个轻量、零依赖的网页工具，用于从图片上拾取坐标点或框选区域，并输出**像素坐标**与**百分比坐标**，方便直接粘贴到 ComfyUI / Stable Diffusion 等提示词工具中使用。
+
+<p align="center">
+  <img src="favicon.png" width="80" alt="BerryUIKI 图像坐标拾取工具图标">
+</p>
 
 单文件 HTML，浏览器直接打开即可运行，无需安装、无需构建、无需后端。
 
