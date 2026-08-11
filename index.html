@@ -15,8 +15,11 @@
     --text:#1a1d23; --muted:#6b7280; --accent:#4f8cff; --accent2:#10b981;
     --danger:#e74c3c; --warn:#f59e0b;
   }
-  .icon-btn{background:none; border:none; color:var(--muted); cursor:pointer; font-size:18px; padding:4px 6px; line-height:1; border-radius:6px; transition:color .15s}
+  .icon-btn{background:none; border:none; color:var(--muted); cursor:pointer; font-size:18px; padding:4px 6px; line-height:1; border-radius:6px; transition:color .15s; display:inline-flex; align-items:center}
   .icon-btn:hover{color:var(--text)}
+  .icon-btn .icon-sun{display:none}
+  :root.light .icon-btn .icon-moon{display:none}
+  :root.light .icon-btn .icon-sun{display:block}
   .app-title{font-size:16px; font-weight:600; color:var(--text)}
   .app-sub{font-size:13px; color:var(--muted)}
   *{box-sizing:border-box}
@@ -179,7 +182,6 @@
   .gh-icon:hover{color:#fff}
   :root.light .gh-link:hover{color:#000}
   :root.light .gh-icon:hover{color:#000}
-  #copyBtn{padding:8px 18px; font-size:14px; font-weight:600}
   #langSel{background:var(--panel2); color:var(--text); border:1px solid var(--border); border-radius:6px; padding:4px 8px; font-size:12px; cursor:pointer; outline:none}
   #langSel:hover{border-color:var(--accent)}
 </style>
@@ -194,7 +196,10 @@
     <a href="https://github.com/BerryUIKI/ImgCoordPicker" target="_blank" title="GitHub 仓库" class="gh-icon">
       <svg viewBox="0 0 16 16" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
     </a>
-    <button id="themeBtn" title="切换主题" class="icon-btn">🌙</button>
+    <button id="themeBtn" title="切换主题" class="icon-btn">
+      <svg class="icon-moon" viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      <svg class="icon-sun" viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10zm0-15a1 1 0 0 1 1 1v2a1 1 0 0 1-2 0V3a1 1 0 0 1 1-1zm0 18a1 1 0 0 1 1 1v2a1 1 0 0 1-2 0v-2a1 1 0 0 1 1-1zM4.22 4.22a1 1 0 0 1 1.41 0l1.42 1.42a1 1 0 1 1-1.42 1.41L4.22 5.64a1 1 0 0 1 0-1.42zM18.36 18.36a1 1 0 0 1 1.41 0l1.42 1.42a1 1 0 1 1-1.42 1.41l-1.41-1.42a1 1 0 0 1 0-1.41zM1 12a1 1 0 0 1 1-1h2a1 1 0 0 1 0 2H2a1 1 0 0 1-1-1zm18 0a1 1 0 0 1 1-1h2a1 1 0 0 1 0 2h-2a1 1 0 0 1-1-1zM4.22 19.78a1 1 0 0 1 0-1.41l1.42-1.42a1 1 0 1 1 1.41 1.42l-1.42 1.41a1 1 0 0 1-1.41 0zm14.14-14.14a1 1 0 0 1 0-1.41l1.42-1.42a1 1 0 1 1 1.41 1.42l-1.42 1.41a1 1 0 0 1-1.41 0z"/></svg>
+    </button>
     <select id="langSel" title="Language / 语言">
       <option value="zh">中文</option>
       <option value="en">English</option>
@@ -257,8 +262,8 @@
       <div style="padding:6px 12px; border-bottom:1px solid var(--border); display:flex; gap:6px; align-items:center">
         <span style="font-size:11px; color:var(--muted)" data-i18n="groupLabel">分组：</span>
         <div class="seg" id="groupSeg">
-          <button data-group="type" class="on" data-i18n="groupType">按类型</button>
-          <button data-group="text" data-i18n="groupText">按文字</button>
+          <button data-group="none" class="on" data-i18n="groupNone">不分组</button>
+          <button data-group="type" data-i18n="groupType">按类型分组</button>
         </div>
       </div>
       <div id="list"></div>
@@ -266,8 +271,10 @@
         <button id="exportBtn" title="导出标注 JSON">⬇️ <span data-i18n="export">导出</span></button>
         <button id="importBtn" title="导入标注 JSON">⬆️ <span data-i18n="import">导入</span></button>
         <button id="addManualBtn" data-i18n="addManual">➕ 手动添加</button>
-        <button id="copyBtn" data-i18n="copy">📋 复制结果</button>
-        <button id="clearBtn" class="danger" data-i18n="clear">🧹 清空</button>
+      </div>
+      <div style="padding:0 12px 8px; display:flex; gap:8px; border-top:1px solid var(--border); padding-top:8px">
+        <button id="copyBtn" class="primary" data-i18n="copy" style="flex:1; padding:10px 18px; font-size:14px; font-weight:600">📋 复制结果</button>
+        <button id="clearBtn" class="danger" data-i18n="clear" style="padding:10px 12px; font-size:13px; flex-shrink:0">🧹 清空</button>
       </div>
       <input type="file" id="importInput" accept=".json,application/json" hidden>
       <div style="padding:8px 12px 0; border-top:1px solid var(--border); display:flex; align-items:center; gap:8px">
@@ -321,7 +328,7 @@
   let selectedAnnotationId=null;       // currently selected annotation id
   let showGrid=false;                  // grid helper lines toggle
   let snappingActive=false;            // shift key snapping state
-  let groupingMode='type';             // 'type' | 'text'
+  let groupingMode='none';             // 'none' | 'type'
   const HISTORY_LIMIT=50;
   const DRAG_THRESHOLD=5;              // px movement to trigger box mode
   const CLICK_MAX_MS=250;              // max mousedown-to-mouseup time for a click
@@ -920,17 +927,8 @@
         items.forEach(([a,i])=>listEl.appendChild(buildItem(a,i,t)));
       });
     } else {
-      // group by text
-      const tgroup=new Map();
-      annotations.forEach((a,i)=>{
-        const key=(a.text&&a.text.trim())?a.text.trim():t.noLabel;
-        if(!tgroup.has(key)) tgroup.set(key,[]);
-        tgroup.get(key).push([a,i]);
-      });
-      tgroup.forEach((items,title)=>{
-        listEl.appendChild(groupHeader(title, items.length));
-        items.forEach(([a,i])=>listEl.appendChild(buildItem(a,i,t)));
-      });
+      // no grouping - flat list
+      annotations.forEach((a,i)=>listEl.appendChild(buildItem(a,i,t)));
     }
     updateOutput();
   }
@@ -1162,7 +1160,6 @@
   const themeBtn=$('themeBtn');
   function applyTheme(){
     document.documentElement.classList.toggle('light', !darkTheme);
-    themeBtn.textContent=darkTheme?'🌙':'☀️';
   }
   applyTheme();
   themeBtn.onclick=()=>{
@@ -1288,8 +1285,8 @@
       copySelectedOK:'已复制选中坐标 ✅',
       grid:'⧉ 网格',
       groupLabel:'分组：',
-      groupType:'按类型',
-      groupText:'按文字',
+      groupNone:'不分组',
+      groupType:'按类型分组',
       noLabel:'未标注',
       export:'导出 JSON',
       import:'导入 JSON',
@@ -1349,8 +1346,8 @@
       copySelectedOK:'✅ Copied selected coords',
       grid:'⧉ Grid',
       groupLabel:'Group:',
+      groupNone:'None',
       groupType:'By Type',
-      groupText:'By Text',
       noLabel:'No Label',
       export:'Export JSON',
       import:'Import JSON',
