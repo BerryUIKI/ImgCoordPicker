@@ -1,4 +1,4 @@
-# ImgCoordPicker
+# ImgCoordPicker 图片坐标拾取工具
 
 > 🖱️ 图片坐标拾取工具 —— 为提示词 / AI 工作流而生
 

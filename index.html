@@ -33,6 +33,36 @@
   button.primary:hover{filter:brightness(1.1)}
   button.danger:hover{border-color:var(--danger); color:var(--danger)}
   .main{flex:1; display:flex; min-height:0}
+  .thumbs{
+    width:180px; background:var(--panel); border-right:1px solid var(--border);
+    display:flex; flex-direction:column; min-height:0; flex-shrink:0; transition:width .15s;
+  }
+  .thumbs.collapsed{width:0; border-right:none}
+  .thumbs.collapsed .thumbList{display:none}
+  .thumbs.collapsed .thumbsHead{justify-content:center}
+  .thumbsHead{
+    display:flex; align-items:center; gap:6px; padding:10px; border-bottom:1px solid var(--border);
+    font-size:12px; font-weight:600; color:var(--muted); flex-shrink:0;
+  }
+  .thumbsHead .spacer{flex:1}
+  #thumbsToggle, .thumb-del{
+    background:none; border:none; color:var(--muted); cursor:pointer; font-size:14px; padding:0 2px; line-height:1;
+  }
+  #thumbsToggle:hover{color:#fff}
+  .thumbList{flex:1; overflow-y:auto; padding:8px; min-height:0}
+  .thumb{
+    display:flex; align-items:center; gap:8px; padding:6px; border-radius:8px;
+    border:1px solid var(--border); margin-bottom:6px; cursor:pointer; background:var(--panel2);
+    transition:border-color .15s;
+  }
+  .thumb:hover{border-color:var(--accent)}
+  .thumb.active{border-color:var(--accent); background:rgba(79,140,255,.12)}
+  .thumb img{width:44px; height:44px; object-fit:cover; border-radius:6px; background:var(--bg); flex-shrink:0}
+  .thumb .tinfo{min-width:0; flex:1}
+  .thumb .tname{font-size:11px; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .thumb .tcount{font-size:10px; color:var(--muted)}
+  .thumb .thumb-del{flex-shrink:0}
+  .thumb .thumb-del:hover{color:var(--danger)}
   .left{flex:1; display:flex; flex-direction:column; min-width:0}
   #stageWrap{
     flex:1; position:relative; overflow:auto; background:
@@ -145,8 +175,16 @@
     <button id="resetBtn" data-i18n="reset">🗑️ 清空标注</button>
   </header>
 
-  <div class="main">
-    <div class="left">
+<div class="main">
+	    <div class="thumbs" id="thumbsPanel">
+	      <div class="thumbsHead">
+	        <span data-i18n="thumbsTitle">📷 图集</span> <span class="count" id="thumbsCount">0</span>
+	        <div class="spacer"></div>
+	        <button id="thumbsToggle" title="折叠">◀</button>
+	      </div>
+	      <div class="thumbList" id="thumbList"></div>
+	    </div>
+	    <div class="left">
       <div id="stageWrap">
         <div id="stage">
           <div id="stageInner">
@@ -203,19 +241,116 @@
   const toolHint=$('toolHint'), toast=$('toast'), fitBtn=$('fitBtn');
 
   // ---------- state ----------
-  let img=null;                        // HTMLImageElement
+  let images=[];                       // [{id,name,img,annotations,nextId,thumbnail,scale,lastLayout}]
+  let currentImageId=null;
+  let img=null;                        // alias for current image's img (kept for minimal code changes)
   let scale=1;
   let mode='pct';                      // pct | both
   const NS='http://www.w3.org/2000/svg';
-  let annotations=[];                  // {id,type,x,y,w,h,text}
-  let nextId=1;
-  let dragState=null;                  // {startX,startY,startTime,active,dx,dy} — active=true means box drag in progress
+  let annotations=[];                  // alias for current image's annotations
+  let nextId=1;                        // alias for current image's nextId
+  let dragState=null;                  // {startX,startY,startTime,active,dx,dy}
   let draftRect=null;                  // svg rect for box draft
   let draftLabel=null;                 // svg text for box size label during drag
   let hoverPx=null;                    // {x,y} canvas px for magnifier
   let lastLayout=null;
+  let thumbsCollapsed=false;
   const DRAG_THRESHOLD=5;              // px movement to trigger box mode
   const CLICK_MAX_MS=250;              // max mousedown-to-mouseup time for a click
+
+  // ---------- multi-image helpers ----------
+  function getCurrentImage(){
+    return images.find(im=>im.id===currentImageId) || null;
+  }
+  function saveCurrentState(){
+    const ci=getCurrentImage();
+    if(!ci) return;
+    ci.annotations=annotations;
+    ci.nextId=nextId;
+    ci.scale=scale;
+    ci.lastLayout=lastLayout;
+  }
+  function loadImageState(id){
+    const im=images.find(x=>x.id===id);
+    if(!im) return;
+    currentImageId=id;
+    img=im.img;
+    annotations=im.annotations;
+    nextId=im.nextId;
+    scale=im.scale||1;
+    lastLayout=im.lastLayout||null;
+  }
+  function switchImage(id){
+    saveCurrentState();
+    loadImageState(id);
+    layout();
+    renderList();
+    updateOutput();
+    renderThumbs();
+  }
+  function addImage(file, im){
+    const id='img_'+Date.now()+'_'+Math.random().toString(36).slice(2,6);
+    const name=file.name;
+    // generate thumbnail
+    const c=document.createElement('canvas');
+    const max=80;
+    const s=Math.min(max/im.naturalWidth, max/im.naturalHeight, 1);
+    c.width=im.naturalWidth*s; c.height=im.naturalHeight*s;
+    const ctx=c.getContext('2d');
+    ctx.drawImage(im,0,0,c.width,c.height);
+    const thumbnail=c.toDataURL('image/jpeg',0.7);
+    const entry={id, name, img:im, annotations:[], nextId:1, thumbnail, scale:1, lastLayout:null};
+    images.push(entry);
+    saveCurrentState();
+    loadImageState(id);
+    imgCanvas.width=im.naturalWidth;
+    imgCanvas.height=im.naturalHeight;
+    const ctx2=imgCanvas.getContext('2d');
+    ctx2.drawImage(im,0,0);
+    renderThumbs();
+    return entry;
+  }
+  function removeImage(id){
+    if(images.length<=1){ toastMsg(i18n[currentLang].cantRemoveLast); return; }
+    const idx=images.findIndex(x=>x.id===id);
+    if(idx===-1) return;
+    images.splice(idx,1);
+    if(currentImageId===id){
+      const next=images[Math.min(idx,images.length-1)];
+      loadImageState(next.id);
+      imgCanvas.width=next.img.naturalWidth;
+      imgCanvas.height=next.img.naturalHeight;
+      const ctx=imgCanvas.getContext('2d');
+      ctx.drawImage(next.img,0,0);
+      requestAnimationFrame(()=>requestAnimationFrame(fitToView));
+    }
+    renderThumbs();
+    renderList();
+    updateOutput();
+  }
+
+  // ---------- thumbs rendering ----------
+  function renderThumbs(){
+    const el=$('thumbList');
+    el.innerHTML='';
+    $('thumbsCount').textContent=images.length;
+    images.forEach(im=>{
+      const div=document.createElement('div');
+      div.className='thumb'+(im.id===currentImageId?' active':'');
+      const imgEl=document.createElement('img');
+      imgEl.src=im.thumbnail; imgEl.alt=im.name;
+      const info=document.createElement('div'); info.className='tinfo';
+      const nameEl=document.createElement('div'); nameEl.className='tname'; nameEl.textContent=im.name;
+      const countEl=document.createElement('div'); countEl.className='tcount'; countEl.textContent=im.annotations.length+' 标注';
+      info.append(nameEl, countEl);
+      const del=document.createElement('button'); del.className='thumb-del'; del.textContent='✕';
+      del.title='删除图片';
+      del.onclick=e=>{ e.stopPropagation(); removeImage(im.id); };
+      div.append(imgEl, info, del);
+      div.onclick=()=>{ if(im.id!==currentImageId) switchImage(im.id); };
+      el.appendChild(div);
+    });
+  }
 
   // ---------- image loading ----------
   function loadFile(file){
@@ -223,12 +358,11 @@
     const url=URL.createObjectURL(file);
     const im=new Image();
     im.onload=()=>{
-      img=im;
+      addImage(file, im);
       imgCanvas.width=im.naturalWidth;
       imgCanvas.height=im.naturalHeight;
       const ctx=imgCanvas.getContext('2d');
       ctx.drawImage(im,0,0);
-      // wait for layout to settle so stageWrap has real dimensions, then fit
       requestAnimationFrame(()=>requestAnimationFrame(fitToView));
       toastMsg(i18n[currentLang].loadSuccess + im.naturalWidth +' × '+ im.naturalHeight);
     };
@@ -647,6 +781,11 @@
   toolAuto.classList.add('active');
   toolHint.textContent='单击＝点选 · 长按拖动＝框选';
   fitBtn.onclick=()=>{ fitToView(); toastMsg(i18n[currentLang].fitToast); };
+  $('thumbsToggle').onclick=()=>{
+    thumbsCollapsed=!thumbsCollapsed;
+    $('thumbsPanel').classList.toggle('collapsed', thumbsCollapsed);
+    $('thumbsToggle').textContent=thumbsCollapsed?'▶':'◀';
+  };
   modeSeg.querySelectorAll('button').forEach(b=>{
     b.onclick=()=>{
       modeSeg.querySelectorAll('button').forEach(x=>x.classList.remove('on'));
@@ -708,7 +847,9 @@
       pointBadge:'点选',
       boxBadge:'框选',
       metaPx:'像素',
-      magCoord:''
+      magCoord:'',
+      thumbsTitle:'📷 图集',
+      cantRemoveLast:'至少保留一张图片'
     },
     en:{
       title:'🖱️ Image Coord Picker',
@@ -745,7 +886,9 @@
       pointBadge:'Point',
       boxBadge:'Box',
       metaPx:'Pixel',
-      magCoord:''
+      magCoord:'',
+      thumbsTitle:'📷 Gallery',
+      cantRemoveLast:'Keep at least one image'
     }
   };
   let currentLang='zh';
